@@ -44,6 +44,8 @@ namespace CustomizableNailDamage
         public float CustomNailDamage = 0.1f;
         public bool EnableMod = true;
         public bool DisplayNailDamage = false;
+        public float ModifiedNailDamage = 0.0f;
+        public bool FuryEquipped = false;
 
         [JsonConverter(typeof(PlayerActionSetConverter))]
         public KeyBinds keybinds = new KeyBinds();
@@ -53,7 +55,7 @@ namespace CustomizableNailDamage
     public class CustomizableNailDamage : Mod, ICustomMenuMod, IGlobalSettings<GlobalSettings>
     {
         public CustomizableNailDamage() : base("CustomizableNailDamage") { }
-        public override string GetVersion() => "1.0";
+        public override string GetVersion() => "1.1";
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
         private float damageRemainder = 0f;
@@ -75,9 +77,9 @@ namespace CustomizableNailDamage
         {
             string baseDamage = "";
             if (!GS.EnableFloatNailDamage)
-                baseDamage = $"Nail DMG: {PlayerData.instance.nailDamage}";
+                baseDamage = $"Nail DMG: {PlayerData.instance.nailDamage} ({GS.ModifiedNailDamage})";
             else
-                baseDamage = $"Nail DMG: {GS.CustomNailDamage}";
+                baseDamage = $"Nail DMG: {GS.CustomNailDamage} ({GS.ModifiedNailDamage})";
 
             if (GS.EnableFloatNailDamage)
             {
@@ -87,6 +89,40 @@ namespace CustomizableNailDamage
             return baseDamage;
         }
         // ОТОБРАЖЕНИЕ УРОНА ГВОЗДЯ -----
+
+        // РАССЧЁТ УРОНА ГВОЗДЯ С АМУЛЕТАМИ (СИЛА, ЯРОСТЬ) -----
+        private float GetModifiedNailDamage(float baseDamage)
+        {
+            float modified = baseDamage;
+
+            if (PlayerData.instance.equippedCharms.Contains(6))
+            {
+                modified *= 1.5f;
+                Log("Equipped Strength");
+            }
+
+            if (PlayerData.instance.equippedCharms.Contains(25) && PlayerData.instance.health <= 1)
+            {
+                modified *= 1.75f;
+                Log("Equipped Fury");
+            }
+
+            Log($"Got modified nail DMG: {modified}");
+            return modified;
+        }
+
+        private float GetModifiedNailDamage(float baseDamage, bool tolog)
+        {
+            float modified = baseDamage;
+
+            if (PlayerData.instance.equippedCharms.Contains(6))
+                modified *= 1.5f;
+
+            if (PlayerData.instance.equippedCharms.Contains(25) && PlayerData.instance.health <= 1)
+                modified *= 1.75f;
+            return modified;
+        }
+        // РАССЧЁТ УРОНА ГВОЗДЯ С АМУЛЕТАМИ (СИЛА, ЯРОСТЬ) -----
 
         // МЕНЮ -----
         public MenuScreen GetMenuScreen(MenuScreen modListMenu, ModToggleDelegates? toggleDelegates)
@@ -120,6 +156,16 @@ namespace CustomizableNailDamage
                         {
                             GS.EnableFloatNailDamage = index == 1;
                             OnSaveGlobal();
+                            if (GS.EnableFloatNailDamage)
+                            {
+                                float modified = GetModifiedNailDamage(GS.CustomNailDamage);
+                                GS.ModifiedNailDamage = modified;
+                            }
+                            else
+                            {
+                                float modified = GetModifiedNailDamage(PlayerData.instance.nailDamage);
+                                GS.ModifiedNailDamage = Mathf.RoundToInt(modified);
+                            }
                             Log($"Float nail damage {(GS.EnableFloatNailDamage ? "enabled" : "disabled")}");
                         },
 
@@ -148,6 +194,11 @@ namespace CustomizableNailDamage
                         {
                             float rounded = Mathf.Round(val * 10f) / 10f;
                             GS.CustomNailDamage = rounded;
+                            if (GS.EnableFloatNailDamage)
+                            {
+                                float modified = GetModifiedNailDamage(GS.CustomNailDamage);
+                                GS.ModifiedNailDamage = modified;
+                            }
                             Log($"Custom float nail damage set to {rounded}");
                         },
 
@@ -187,12 +238,24 @@ namespace CustomizableNailDamage
             base.Initialize(preloadedObjects);
             ModHooks.HeroUpdateHook += OnHeroUpdate;
             ModHooks.SlashHitHook += OnSlashHit;
+            UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChanged;
 
             Log("CustomizableNailDamage initialized");
         }
 
 
         private List<string> recentlyHit = new List<string>();
+
+        // УДАЛИТЬ ДИСПЛЕЙ ПРИ ВЫХОДЕ В ГЛАВНОЕ МЕНЮ -----
+        private void OnSceneChanged(Scene from, Scene to)
+        {
+            if (to.name == "Menu_Title" || to.name == "Quit_To_Menu")
+            {
+                ModDisplay.Instance?.Destroy();
+                Log("[SceneChange] Destroyed display due to exiting save");
+            }
+        }
+        // УДАЛИТЬ ДИСПЛЕЙ ПРИ ВЫХОДЕ В ГЛАВНОЕ МЕНЮ -----
 
         public void OnHeroUpdate()
         {
@@ -223,6 +286,16 @@ namespace CustomizableNailDamage
             {
                 if (ModDisplay.Instance == null)
                     ModDisplay.Instance = new ModDisplay();
+                if (!GS.EnableFloatNailDamage)
+                {
+                    float modified = GetModifiedNailDamage(PlayerData.instance.nailDamage, false);
+                    GS.ModifiedNailDamage = Mathf.RoundToInt(modified);
+                }
+                else
+                {
+                    float modified = GetModifiedNailDamage(GS.CustomNailDamage, false);
+                    GS.ModifiedNailDamage = modified;
+                }
                 ModDisplay.Instance.Display(BuildDisplayText());
             }
             else
@@ -234,6 +307,8 @@ namespace CustomizableNailDamage
                 PlayerData.instance.nailDamage++;
                 PlayerData.instance.nailSmithUpgrades++;
                 PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
+                float modified = GetModifiedNailDamage(PlayerData.instance.nailDamage);
+                GS.ModifiedNailDamage = Mathf.RoundToInt(modified);
                 Log($"+1 NailDMG, now: {PlayerData.instance.nailDamage}");
             }
 
@@ -242,6 +317,8 @@ namespace CustomizableNailDamage
                 PlayerData.instance.nailDamage--;
                 PlayerData.instance.nailSmithUpgrades--;
                 PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
+                float modified = GetModifiedNailDamage(PlayerData.instance.nailDamage);
+                GS.ModifiedNailDamage = Mathf.RoundToInt(modified);
                 Log($"-1 NailDMG, now: {PlayerData.instance.nailDamage}");
             }
 
@@ -268,20 +345,34 @@ namespace CustomizableNailDamage
             // ОТРИЦАТЕЛЬНЫЙ ГВОЗДЬ И ХИЛ -----
             if (!GS.EnableFloatNailDamage)
             {
-                if (PlayerData.instance.nailDamage >= 0) return;
+                if (PlayerData.instance.nailDamage > 0) return;
 
                 var enemy = otherCollider.gameObject.GetComponent<HealthManager>();
                 if (enemy == null || recentlyHit.Contains(enemy.name)) return;
 
-                int healAmount = Mathf.Abs(PlayerData.instance.nailDamage) + 1;
+                float modified = GetModifiedNailDamage(PlayerData.instance.nailDamage);
+                GS.ModifiedNailDamage = Mathf.RoundToInt(modified);
+                int healAmount = Mathf.Abs(Mathf.RoundToInt(modified));
                 int previousNailDMG = PlayerData.instance.nailDamage;
 
                 PlayerData.instance.nailDamage = 1;
                 PlayerData.instance.nailSmithUpgrades = 1;
                 PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
 
-                enemy.hp += healAmount;
-                Log($"{enemy.name} was cured on {healAmount} HP");
+                enemy.hp++;
+                if (previousNailDMG < 0)
+                {
+                    enemy.hp += healAmount + 1;
+                    if (PlayerData.instance.equippedCharms.Contains(25) && PlayerData.instance.health <= 1)
+                    {
+                        enemy.hp += 2;
+                    }
+                    Log($"{enemy.name} was cured on {healAmount} HP (with neutralized hit)");
+                }
+                else
+                {
+                    Log($"{enemy.name} received 0 damage (neutralized for 0-damage nail)");
+                }
 
                 recentlyHit.Add(enemy.name);
                 GameManager.instance.StartCoroutine(RemoveFromRecentlyHit(enemy.name));
@@ -300,25 +391,67 @@ namespace CustomizableNailDamage
 
                 int prevNailDMG = PlayerData.instance.nailDamage;
 
-                PlayerData.instance.nailDamage = 1;
-                PlayerData.instance.nailSmithUpgrades = 1;
-                PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
+                float modified = GetModifiedNailDamage(GS.CustomNailDamage);
+                GS.ModifiedNailDamage = modified;
+                damageRemainder += modified;
 
-                damageRemainder += GS.CustomNailDamage;
-                Log($"[Fractional Hit] Accumulated: {damageRemainder:F2} / 1");
-
-                if (damageRemainder >= 1f)
+                if (modified < 1)
                 {
-                    damageRemainder -= 1f;
-                    Log($"[Fractional Hit] DEAL 1 real damage to {enemy.name}");
-                    recentlyHit.Add(enemy.name);
-                    GameManager.instance.StartCoroutine(RemoveFromRecentlyHit(enemy.name));
+                    PlayerData.instance.nailDamage = 1;
+                    PlayerData.instance.nailSmithUpgrades = 1;
+                    PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
+
+                    if (damageRemainder >= 1f)
+                    {
+                        damageRemainder -= 1f;
+                        Log($"[Fractional Hit] DEAL 1 real damage to {enemy.name}");
+                        recentlyHit.Add(enemy.name);
+                        GameManager.instance.StartCoroutine(RemoveFromRecentlyHit(enemy.name));
+                    }
+                    else
+                    {
+                        enemy.hp++;
+                        recentlyHit.Add(enemy.name);
+                        GameManager.instance.StartCoroutine(RemoveFromRecentlyHit(enemy.name));
+                    }
+                    
+                    enemy.hp++;
+                    if (PlayerData.instance.equippedCharms.Contains(25) && PlayerData.instance.health <= 1)
+                    {
+                        enemy.hp += 2;
+                    }
                 }
+
                 else
                 {
-                    enemy.hp += 1;
+                    int wholeDamage = Mathf.FloorToInt(modified);
+                    float fractional = modified - wholeDamage;
+                    PlayerData.instance.nailDamage = wholeDamage;
+                    PlayerData.instance.nailSmithUpgrades = wholeDamage;
+                    PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
+
+                    for (int i = 0; i < wholeDamage; i++)
+                    {
+                        damageRemainder -= 1f;
+                    }
+
+                    Log($"[Fractional Hit] +{modified:F2} (Whole: {wholeDamage}, Fractional: {fractional}, Remainder now: {damageRemainder})");
+
+                    if (damageRemainder >= 1f)
+                    {
+                        damageRemainder -= 1f;
+                        enemy.hp -= 1;
+                        Log($"[Fractional Hit] Added 1 extra damage to {enemy.name}");
+                    }
+
                     recentlyHit.Add(enemy.name);
                     GameManager.instance.StartCoroutine(RemoveFromRecentlyHit(enemy.name));
+                    enemy.hp++;
+
+                    if (PlayerData.instance.equippedCharms.Contains(25) && PlayerData.instance.health <= 1)
+                    {
+                        enemy.hp += 2;
+                    }
                 }
 
                 PlayerData.instance.nailDamage = prevNailDMG;
@@ -332,7 +465,7 @@ namespace CustomizableNailDamage
 
         private IEnumerator RemoveFromRecentlyHit(string name) // НЕ ЗНАЮ ЧТО ЭТО, НО ПУСТЬ БУДЕТ
         {
-            yield return new WaitForSeconds(0.2f);
+            yield return new WaitForSeconds(0.1f);
             recentlyHit.Remove(name);
         }
     }
