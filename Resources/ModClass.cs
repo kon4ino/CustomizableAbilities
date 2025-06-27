@@ -55,7 +55,7 @@ namespace CustomizableNailDamage
     public class CustomizableNailDamage : Mod, ICustomMenuMod, IGlobalSettings<GlobalSettings>
     {
         public CustomizableNailDamage() : base("CustomizableNailDamage") { }
-        public override string GetVersion() => "1.1";
+        public override string GetVersion() => "1.1.0.1";
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
         private float damageRemainder = 0f;
