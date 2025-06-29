@@ -1,11 +1,20 @@
-# CustomizableNailDamage
+# CustomizableNailDamage — ino_
 
-A mod that allows you to freely change the damage of the nail. You can make it negative, which will heal bosses, or turn the damage to, for example, 100, and see how much damage you deal.
+Mod that allows you to change the damage of the nail, including negative and fractional.
+Negative nail will heal enemies.
 
-You can also make the nail damage a non-integer number (0.1-0.9).
+Standard binds:
+U — +1 nail damage
+I — -1 nail damage
+O — enable/disable display of nail damage
 
-In the mod menu, you can change the mode of the mod (fractional and normal nail mode). 
-When you press the 'U' key (by default), your nail damage will be increased by 1, when you press the 'I' key, it will be decreased by 1.
-You can turn on and off the display of nail damage by pressing the 'O' key (or in the menu).
+Settings:
+1. Enable/disable mod
+2. Switch between whole nail modes (positive, negative) and fractional
+3. Enable/disable display of nail damage
+4. Heal enemies beyond their max health
+5. Custom float nail damage: set fractional nail damage (0.01-0.99)
+In the menu it shows only 0.1-0.9, but it's actually just UI limitation.
+6. Change key binds (U, I, O)
 
-Have a nice game.
+Current interactions: Fragile Strength, Fury of the Fallen.
