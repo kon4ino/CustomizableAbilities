@@ -9,7 +9,7 @@ Settings:
 2. Switch between whole nail modes (positive, negative) and fractional
 3. Enable/disable display of nail damage
 4. Heal enemies beyond their max health
-5. Custom float nail damage: set fractional nail damage (0.01-0.99) In the menu it shows only 0.1-0.9, but it's actually just UI limitation.
+5. Custom float nail damage: set fractional nail damage (0.01-0.99)
 6. Change key binds (U, I, O)
   
 Current interactions: Fragile Strength, Fury of the Fallen.
