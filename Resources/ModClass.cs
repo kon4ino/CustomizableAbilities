@@ -56,7 +56,7 @@ namespace CustomizableNailDamage
     public class CustomizableNailDamage : Mod, ICustomMenuMod, IGlobalSettings<GlobalSettings>
     {
         public CustomizableNailDamage() : base("CustomizableNailDamage") { }
-        public override string GetVersion() => "1.2.0.0";
+        public override string GetVersion() => "1.2.1.0";
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
         private float damageRemainder = 0f;
@@ -132,7 +132,6 @@ namespace CustomizableNailDamage
             //Log($"Got modified nail DMG: {modified}");
             return modified;
         }
-
         // РАССЧЁТ УРОНА ГВОЗДЯ С АМУЛЕТАМИ (СИЛА, ЯРОСТЬ) -----
 
         // МЕНЮ -----
@@ -207,7 +206,7 @@ namespace CustomizableNailDamage
                         loadSetting: () => GS.HealEnemiesOverMaxHP ? 1 : 0
                     ),
 
-                    new CustomSlider // УРОН ДРОБНОГО ГВОЗДЯ
+                    new HundredthSlider // УРОН ДРОБНОГО ГВОЗДЯ
                     (
                         name: "Custom Float Nail Damage",
                         storeValue: val =>
@@ -471,7 +470,7 @@ namespace CustomizableNailDamage
                         recentlyHit.Add(enemy.name);
                         GameManager.instance.StartCoroutine(RemoveFromRecentlyHit(enemy.name));
                     }
-                    
+
                     enemy.hp++;
                     if (PlayerData.instance.equippedCharms.Contains(25) && PlayerData.instance.health <= 1)
                     {

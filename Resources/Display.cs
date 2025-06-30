@@ -32,7 +32,7 @@ namespace CustomizableNailDamage
             canvasGroup.blocksRaycasts = false;
 
             textUI = CanvasUtil.CreateTextPanel(
-                canvas, "", 24, TextAnchor.UpperLeft,
+                canvas, "", 26, TextAnchor.UpperLeft,
                 new CanvasUtil.RectData(textSize, Vector2.zero, textPosition, textPosition),
                 CanvasUtil.GetFont("Perpetua")
             ).GetComponent<UnityEngine.UI.Text>();
