@@ -4,8 +4,8 @@ Mod that allows you to change the damage of the nail, including negative and fra
 Negative nail will heal enemies.
 
 Standard binds:
-U — +1 nail damage
-I — -1 nail damage
+U — +1 nail damage,
+I — -1 nail damage,
 O — enable/disable display of nail damage
 
 Settings:
