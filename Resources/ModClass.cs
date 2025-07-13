@@ -23,22 +23,26 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+//using System.Reflection.Emit;
+using Mono.Cecil.Cil;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.3.0.0
+/* mod by ino_ (kon4ino), 1.3.1.0
  thank CharmChanger mod for some code */
+
 namespace CustomizableNailDamage
 {
 
-    public class MyLog // Я УСТАЛ ОТКОММЕНЧИВАТЬ КАЖДЫЙ ЛОГ
+    #region ЛОГИРОВАНИЕ
+    public static class inoLog
     {
-        bool enablelog = true;
-        public void log<T>(T messagetolog)
+        private static bool enablelog = true;
+        public static void log<T>(T messagetolog)
         {
             if (enablelog)
                 Modding.Logger.Log(messagetolog);
         }
-        public void log<T>(T messagetolog, bool dolog)
+        public static void log<T>(T messagetolog, bool dolog)
         {
             if (enablelog && dolog)
             {
@@ -46,8 +50,10 @@ namespace CustomizableNailDamage
             }
         }
     }
+    #endregion ЛОГИРОВАНИЕ
 
-    public class KeyBinds : PlayerActionSet // БИНДЫ
+    #region БИНДЫ
+    public class KeyBinds : PlayerActionSet
     {
         public PlayerAction ToggleFloatMode;
         public PlayerAction IncreaseNailDamage;
@@ -65,36 +71,43 @@ namespace CustomizableNailDamage
             ToggleDisplay.AddDefaultBinding(Key.O);
         }
     }
+    #endregion БИНДЫ
 
-    public class GlobalSettings // ГЛОБАЛЬНЫЕ НАСТРОЙКИ
+    #region ГЛОБАЛЬНЫЕ НАСТРОЙКИ
+    public class GlobalSettings
     {
         public bool EnableFloatNailDamage = false;
-        public float CustomFloatNailDamage = 0.1f;
         public bool EnableMod = true;
         public bool DisplayNailDamage = false;
-        public float ModifiedNailDamage = 0.0f;
         public bool HealEnemiesOverMaxHP = true;
         public int NailUpgrade = 0;
 
         [JsonConverter(typeof(PlayerActionSetConverter))]
         public KeyBinds keybinds = new KeyBinds();
     }
+    #endregion ГЛОБАЛЬНЫЕ НАСТРОЙКИ
 
-    public class LocalSettings // ЛОКАЛЬНЫЕ НАСТРОЙКИ
+    #region ЛОКАЛЬНЫЕ НАСТРОЙКИ
+    public class LocalSettings
     {
         public int CustomIntNailDamage = PlayerData.instance.nailDamage;
+        public float CustomFloatNailDamage = 0.1f;
+        public float ModifiedNailDamage = 0.0f;
+        public int SoulGain = 11;
+        public int ReserveSoulGain = 6;
         public int StoredNailDamage = 0;
         public bool HasStoredValue = false;
         public bool firstLoading = true;
     }
+    #endregion ЛОКАЛЬНЫЕ НАСТРОЙКИ
 
     public class CustomizableNailDamage : Mod, ICustomMenuMod, IGlobalSettings<GlobalSettings>, ILocalSettings<LocalSettings>
     {
+        #region SHIT HAPPENS
         public CustomizableNailDamage() : base("CustomizableNailDamage") { }
-        public override string GetVersion() => "1.3.0.0";
+        public override string GetVersion() => "1.3.1.0";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
-        public MyLog logf = new MyLog();
         private Menu menuRef;
         private float damageRemainder = 0f; // ОСТАТОК ДЛЯ ДРОБНОГО ГВОЗДЯ
         private Dictionary<GameObject, int> enemyMaxHealth = new(); // СЛОВАРЬ В КОТОРОМ ХРАНЯТСЯ МАКС. ЗДОРОВЬЕ КАЖДОГО ВРАГА
@@ -102,8 +115,14 @@ namespace CustomizableNailDamage
         private bool isDamageFromThornsOfAgony = false;
         private bool isThornsOfAgonyDamagedOnce = false;
         Vector2 velocity;
+        public bool ToggleButtonInsideMenu => true;
 
-        // ВКЛ/ВЫКЛ МОД -----
+        private const int Charm_Strength = 25;
+        private const int Charm_Fury = 6;
+        private const int Charm_DashMaster = 31;
+        #endregion SHIT HAPPENS
+
+        #region ВКЛ/ВЫКЛ МОД
         public void DisableMod()
         {
             ModDisplay.Instance?.Destroy();
@@ -118,6 +137,7 @@ namespace CustomizableNailDamage
             On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter -= StrengthDamageIncrease;
             On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter -= FotFNailScaling;
             On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter -= FotFNailArtScaling;
+            IL.HeroController.SoulGain -= CustomSoulGain;
 
             Log("Disabled");
         }
@@ -134,11 +154,13 @@ namespace CustomizableNailDamage
             On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += StrengthDamageIncrease;
             On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter += FotFNailScaling;
             On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += FotFNailArtScaling;
+            IL.HeroController.SoulGain += CustomSoulGain;
 
             Log("Enabled");
         }
-        // ВКЛ/ВЫКЛ МОД -----
+        #endregion ВКЛ/ВЫКЛ МОД
 
+        #region СОХРАНЕНИЕ/ЗАГРУЗКА НАСТРОЕК
         public void OnLoadLocal(LocalSettings s)
         {
             LS = s;
@@ -155,7 +177,9 @@ namespace CustomizableNailDamage
         {
             return GS;
         }
+        #endregion СОХРАНЕНИЕ/ЗАГРУЗКА НАСТРОЕК
 
+        #region ИЗМЕНЕНИЯ ПУЛА ДРОБНОГО ГВОЗДЯ
         private float GetPool(GameObject enemyName)
         {
             if (!fractionalPool.TryGetValue(enemyName, out var pool))
@@ -170,9 +194,9 @@ namespace CustomizableNailDamage
         {
             fractionalPool[enemyName] += value;
         }
+        #endregion ИЗМЕНЕНИЯ ПУЛА ДРОБНОГО ГВОЗДЯ
 
-        public bool ToggleButtonInsideMenu => true;
-
+        #region ИЗМЕНЕНИЯ УРОНА ГВОЗДЯ
         private void UpdateNailDamage(int newValue) // ОБНОВЛЕНИЕ УРОНА ГВОЗДЯ
         {
             if (newValue > 0)
@@ -214,64 +238,70 @@ namespace CustomizableNailDamage
             LS.CustomIntNailDamage -= newValue;
             PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
         }
+        #endregion ИЗМЕНЕНИЯ УРОНА ГВОЗДЯ
 
-        private string BuildDisplayText() // ОТОБРАЖЕНИЕ УРОНА ГВОЗДЯ
+        #region ОТОБРАЖЕНИЕ УРОНА ГВОЗДЯ
+        private string BuildDisplayText()
         {
             string baseDamage = "";
             if (!GS.EnableFloatNailDamage)
-                baseDamage = $"Nail DMG: {LS.CustomIntNailDamage} ({GS.ModifiedNailDamage})";
+                baseDamage = $"Nail DMG: {LS.CustomIntNailDamage} ({LS.ModifiedNailDamage})";
             else
-                baseDamage = $"Nail DMG: {GS.CustomFloatNailDamage} ({GS.ModifiedNailDamage})";
+                baseDamage = $"Nail DMG: {LS.CustomFloatNailDamage} ({LS.ModifiedNailDamage})";
 
             return baseDamage;
         }
+        #endregion ОТОБРАЖЕНИЕ УРОНА ГВОЗДЯ
 
-        private float GetModifiedNailDamage(float baseDamage) // РАССЧЁТ УРОНА ГВОЗДЯ С АМУЛЕТАМИ (СИЛА, ЯРОСТЬ)
+        #region РАССЧЁТ УРОНА
+        private float GetModifiedDamage(float baseDamage, string typeOfDamage)
         {
             float modified = baseDamage;
 
-            if (PlayerData.instance.equippedCharms.Contains(25))
-                modified *= 1.5f;
-            if (PlayerData.instance.equippedCharms.Contains(6) && PlayerData.instance.health <= 1)
-                modified *= 1.75f;
+            switch (typeOfDamage)
+            {
+                case "nail":
+                    if (PlayerData.instance.equippedCharms.Contains(Charm_Strength))
+                        modified *= 1.5f;
+                    if (PlayerData.instance.equippedCharms.Contains(Charm_Fury) && PlayerData.instance.health <= 1)
+                        modified *= 1.75f;
+                    break;
+
+                case "artslash":
+                    if (PlayerData.instance.equippedCharms.Contains(Charm_Fury) && PlayerData.instance.health <= 1)
+                        modified *= 1.75f;
+                    modified *= 2.5f;
+                    break;
+
+                case "artcyclone":
+                    if (PlayerData.instance.equippedCharms.Contains(Charm_Fury) && PlayerData.instance.health <= 1)
+                        modified *= 1.75f;
+                    modified *= 1.25f;
+                    break;
+
+                case "sharpshadow":
+                    if (PlayerData.instance.equippedCharms.Contains(Charm_DashMaster))
+                        modified *= 1.5f;
+                    break;
+
+                case "beam":
+                    modified *= 0.5f;
+                    if (PlayerData.instance.equippedCharms.Contains(Charm_Strength))
+                        modified *= 1.5f;
+                    if (PlayerData.instance.equippedCharms.Contains(Charm_Fury) && PlayerData.instance.health <= 1)
+                        modified *= 1.5f;
+                    break;
+
+                default:
+                    inoLog.log("GetModifiedDamage: undefined type of damage");
+                    break;
+            }
 
             return modified;
         }
-        private float GetModifiedNailArtDamage(float baseDamage, bool isCycloneSlash) // РАССЧЁТ УРОНА ТЕХНИК ГВОЗДЯ С АМУЛЕТАМИ (ЯРОСТЬ)
-        {
-            float modified = baseDamage;
+        #endregion РАССЧЁТ УРОНА
 
-            if (PlayerData.instance.equippedCharms.Contains(6) && PlayerData.instance.health <= 1)
-                modified *= 1.75f;
-            if (isCycloneSlash)
-                modified *= 1.25f;
-            else
-                modified *= 2.5f;
-
-            return modified;
-        }
-        private float GetModifiedSharpShadowDashDamage(float baseDamage) // РАССЧЁТ УРОНА ПРОНИЗЫВАЮЩЕЙ ТЕНИ С АМУЛЕТАМИ (ТРЮКАЧ)
-        {
-            float modified = baseDamage;
-
-            if (PlayerData.instance.equippedCharms.Contains(31))
-                modified *= 1.5f;
-
-            return modified;
-        }
-        private float GetModifiedNailBeamDamage(float baseDamage) // РАССЧЁТ УРОНА ВОЛНЫ ЭЛЕГИИ КУКОЛКИ С АМУЛЕТАМИ (СИЛА, ЯРОСТЬ)
-        {
-            float modified = baseDamage * 0.5f;
-
-            if (PlayerData.instance.equippedCharms.Contains(25))
-                modified *= 1.5f;
-            if (PlayerData.instance.equippedCharms.Contains(6) && PlayerData.instance.health <= 1)
-                modified *= 1.5f;
-
-            return modified;
-        }
-
-        // МЕНЮ -----
+        #region МЕНЮ
         public MenuScreen GetMenuScreen(MenuScreen modListMenu, ModToggleDelegates? toggleDelegates)
         {
             if (menuRef == null)
@@ -307,9 +337,9 @@ namespace CustomizableNailDamage
                             GS.EnableFloatNailDamage = index == 1;
                             OnSaveGlobal();
                             if (GS.EnableFloatNailDamage)
-                                GS.ModifiedNailDamage = GetModifiedNailDamage(GS.CustomFloatNailDamage);
+                                LS.ModifiedNailDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "nail");
                             else
-                                GS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedNailDamage(LS.CustomIntNailDamage));
+                                LS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "nail"));
                         },
 
                         loadSetting: () => GS.EnableFloatNailDamage ? 1 : 0
@@ -357,11 +387,38 @@ namespace CustomizableNailDamage
                                 if (index > 4 && index <= 9)
                                     vanillaDmg = -1 * (5 * (index-4) - (index-4) + 1);
                                 UpdateNailDamage(vanillaDmg);
-                                GS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedNailDamage(vanillaDmg));
+                                LS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedDamage(vanillaDmg, "nail"));
                             }
                         },
 
                         loadSetting: () => GS.NailUpgrade
+                    ),
+
+                    Blueprints.IntInputField // УРОН ЦЕЛОГО ГВОЗДЯ
+                    (
+                        "Custom Nail Damage",
+                        naildmg =>
+                        {
+                            naildmg = Mathf.Clamp(naildmg, -9999, 9999);
+                            UpdateNailDamage(naildmg);
+                            OnSaveLocal();
+
+                            if (!GS.EnableFloatNailDamage)
+                            {
+                                LS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "nail"));
+                            }
+
+                            var inputFieldElement = (InputField)menuRef.Find("NailDamage_Input");
+                            if (inputFieldElement != null)
+                            {
+                                inputFieldElement.userInput = LS.CustomIntNailDamage.ToString();
+                            }
+                        },
+                        () => LS.CustomIntNailDamage,
+                        21,
+                        "DMG",
+                        5,
+                        Id: "NailDamage_Input"
                     ),
 
                     new HundredthSlider // УРОН ДРОБНОГО ГВОЗДЯ
@@ -370,15 +427,61 @@ namespace CustomizableNailDamage
                         storeValue: val =>
                         {
                             float rounded = Mathf.Round(val * 100f) / 100f;
-                            GS.CustomFloatNailDamage = rounded;
+                            LS.CustomFloatNailDamage = rounded;
                             if (GS.EnableFloatNailDamage)
-                                GS.ModifiedNailDamage = GetModifiedNailDamage(GS.CustomFloatNailDamage);
+                                LS.ModifiedNailDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "nail");
                         },
 
-                        loadValue: () => GS.CustomFloatNailDamage,
+                        loadValue: () => LS.CustomFloatNailDamage,
                         minValue: 0.01f,
                         maxValue: 0.99f,
                         wholeNumbers: false
+                    ),
+
+                    Blueprints.IntInputField // КОЛИЧЕСТВО ДУШИ ПОЛУЧАЕМОЙ С УДАРА
+                    (
+                        "Main Vessel Soul Gain",
+                        soulgain =>
+                        {
+                            soulgain = Mathf.Clamp(soulgain, 0, 198);
+
+                            LS.SoulGain = soulgain;
+                            OnSaveLocal();
+
+                            var inputFieldElement = (InputField)menuRef.Find("SoulGain_Input");
+                            if (inputFieldElement != null)
+                            {
+                                inputFieldElement.userInput = LS.SoulGain.ToString();
+                            }
+                        },
+                        () => LS.SoulGain,
+                        11,
+                        "VAL",
+                        3,
+                        Id: "SoulGain_Input"
+                    ),
+
+                    Blueprints.IntInputField // КОЛИЧЕСТВО РЕЗЕРВНОЙ ДУШИ ПОЛУЧАЕМОЙ С УДАРА
+                    (
+                        "Reserve Vessel Soul Gain",
+                        soulgain =>
+                        {
+                            soulgain = Mathf.Clamp(soulgain, 0, 198);
+
+                            LS.ReserveSoulGain = soulgain;
+                            OnSaveLocal();
+
+                            var inputFieldElement = (InputField)menuRef.Find("ReserveSoulGain_Input");
+                            if (inputFieldElement != null)
+                            {
+                                inputFieldElement.userInput = LS.ReserveSoulGain.ToString();
+                            }
+                        },
+                        () => LS.ReserveSoulGain,
+                        6,
+                        "VAL",
+                        3,
+                        Id: "ReserveSoulGain_Input"
                     ),
 
                     new KeyBind
@@ -397,6 +500,40 @@ namespace CustomizableNailDamage
                     (
                         name: "Display Nail Damage Key",
                         playerAction: GS.keybinds.ToggleDisplay
+                    ),
+
+                    new MenuButton
+                    (
+                        name: "Reset Defaults",
+                        description: "Nail damage will be set to Pure (21)",
+                        submitAction: (_) =>
+                        {
+                            if (GS.EnableMod)
+                            {
+                                GS.EnableFloatNailDamage = false;
+                                GS.DisplayNailDamage = true;
+                                LS.CustomFloatNailDamage = 0.1f;
+                                GS.NailUpgrade = 0;
+                                GS.HealEnemiesOverMaxHP = true;
+
+                                LS.CustomIntNailDamage = 21;
+                                LS.ModifiedNailDamage = GetModifiedDamage(LS.CustomIntNailDamage, "nail");
+                                LS.SoulGain = 11;
+                                LS.ReserveSoulGain = 6;
+
+                                GS.keybinds.IncreaseNailDamage.ClearBindings();
+                                GS.keybinds.DecreaseNailDamage.ClearBindings();
+                                GS.keybinds.ToggleDisplay.ClearBindings();
+
+                                GS.keybinds.IncreaseNailDamage.AddDefaultBinding(Key.U);
+                                GS.keybinds.DecreaseNailDamage.AddDefaultBinding(Key.I);
+                                GS.keybinds.ToggleDisplay.AddDefaultBinding(Key.O);
+
+                                OnSaveGlobal();
+                                OnSaveLocal();
+                                menuRef?.Update();
+                            }
+                        }
                     )
 
                 });
@@ -404,9 +541,9 @@ namespace CustomizableNailDamage
 
             return menuRef.GetMenuScreen(modListMenu);
         }
-        // МЕНЮ -----
+        #endregion МЕНЮ
 
-        // ПОДКЛЮЧЕНИЕ ХУКОВ -----
+        #region ПОДКЛЮЧЕНИЕ ХУКОВ
         public override void Initialize(Dictionary<string, Dictionary<string, GameObject>> preloadedObjects)
         {
             base.Initialize(preloadedObjects);
@@ -422,12 +559,29 @@ namespace CustomizableNailDamage
             On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter += FotFNailScaling;
             On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += FotFNailArtScaling;
             UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChanged;
+            IL.HeroController.SoulGain += CustomSoulGain;
 
-            Log("Initializing");
+            Log("Initialized");
         }
-        // ПОДКЛЮЧЕНИЕ ХУКОВ -----
+        #endregion ПОДКЛЮЧЕНИЕ ХУКОВ
 
-        // МЕНЯЮ МНОЖИТЕЛИ УРОНА ГВОЗДЯ У АМУЛЕТОВ, ДАБЫ ОНИ НЕ КОНФЛИКТОВАЛИ С СИСТЕМОЙ -----
+        #region ПОЛУЧАЕМОЕ КОЛИЧЕСТВО ДУШИ
+        private void CustomSoulGain(ILContext il)
+        {
+            if (!GS.EnableMod) return;
+            ILCursor cursor = new ILCursor(il).Goto(0);
+
+            cursor.TryGotoNext(i => i.MatchLdcI4(11));
+            cursor.GotoNext();
+            cursor.EmitDelegate<Func<int, int>>(soul => LS.SoulGain);
+
+            cursor.TryGotoNext(i => i.MatchLdcI4(6));
+            cursor.GotoNext();
+            cursor.EmitDelegate<Func<int, int>>(soul => LS.ReserveSoulGain);
+        }
+        #endregion ПОЛУЧАЕМОЕ КОЛИЧЕСТВО ДУШИ
+
+        #region МЕНЯЮ МНОЖИТЕЛИ УРОНА ГВОЗДЯ У АМУЛЕТОВ, ДАБЫ ОНИ НЕ КОНФЛИКТОВАЛИ С СИСТЕМОЙ
         private void StrengthDamageIncrease(On.HutongGames.PlayMaker.Actions.FloatMultiply.orig_OnEnter orig, FloatMultiply self)
         {
             if (!GS.EnableMod)
@@ -470,9 +624,9 @@ namespace CustomizableNailDamage
 
             orig(self);
         }
-        // МЕНЯЮ МНОЖИТЕЛИ УРОНА ГВОЗДЯ У АМУЛЕТОВ, ДАБЫ ОНИ НЕ КОНФЛИКТОВАЛИ С СИСТЕМОЙ -----
+        #endregion МЕНЯЮ МНОЖИТЕЛИ УРОНА ГВОЗДЯ У АМУЛЕТОВ, ДАБЫ ОНИ НЕ КОНФЛИКТОВАЛИ С СИСТЕМОЙ
 
-        // УРОН ЩИТА ГРЁЗ -----
+        #region УРОН ЩИТА ГРЁЗ
         private void DreamShieldDamage(On.SetHP.orig_OnEnter orig, SetHP self)
         {
             if (!GS.EnableMod)
@@ -486,7 +640,7 @@ namespace CustomizableNailDamage
                 GameObject enemy = self.Fsm.Variables.GetFsmGameObject("Enemy").Value;
                 var damageVar = self.Fsm.Variables.GetFsmInt("Damage");
                 var enemyHpVar = self.Fsm.Variables.GetFsmInt("Enemy HP");
-                logf.log($"DreamShieldDamage: {self.hp}, {self.State.Name}, {self.Fsm.GameObject.name}", false);
+                inoLog.log($"DreamShieldDamage: {self.hp}, {self.State.Name}, {self.Fsm.GameObject.name}", false);
 
                 HealthManager hm = enemy.GetComponent<HealthManager>();
 
@@ -529,7 +683,7 @@ namespace CustomizableNailDamage
                     int newHp = Mathf.Max(hpBefore - damageVar.Value, 0);
                     self.hp.Value = newHp;
 
-                    UpdatePool(enemy.gameObject, GS.CustomFloatNailDamage);
+                    UpdatePool(enemy.gameObject, LS.CustomFloatNailDamage);
                     damageRemainder = GetPool(enemy.gameObject);
                     int damageToDeal = 0;
 
@@ -547,13 +701,14 @@ namespace CustomizableNailDamage
                     self.hp.Value++;
                 }
 
-                logf.log($"DreamShieldDamage, enemy hp: {hm.hp}, damage taken: {self.Fsm.Variables.GetFsmInt("Damage")}", false);
+                inoLog.log($"DreamShieldDamage, enemy hp: {hm.hp}, damage taken: {self.Fsm.Variables.GetFsmInt("Damage")}", false);
             }
 
             orig(self);
         }
-        // УРОН ЩИТА ГРЁЗ -----
+        #endregion УРОН ЩИТА ГРЁЗ
 
+        #region УРОН КОЛЮЧЕК СТРАДАНИЙ
         private void ThornsOfAgonyDamage(On.HutongGames.PlayMaker.Actions.SetFsmInt.orig_OnEnter orig, SetFsmInt self)
         {
             if (!GS.EnableMod)
@@ -577,8 +732,10 @@ namespace CustomizableNailDamage
 
             orig(self);
         }
-        
-        private void OnSaveSaved(SaveGameData data) // ПРОВЕРЯЕМ, ЕСЛИ УРОН ГВОЗДЯ < 1
+        #endregion УРОН КОЛЮЧЕК СТРАДАНИЙ
+
+        #region ПРИ СОХРАНЕНИИ/ЗАГРУЗКЕ
+        private void OnSaveSaved(SaveGameData data)
         {
             if (PlayerData.instance.nailDamage < 1)
             {
@@ -593,10 +750,12 @@ namespace CustomizableNailDamage
             if (LS.CustomIntNailDamage != PlayerData.instance.nailDamage && PlayerData.instance.nailDamage != 1)
             {
                 LS.CustomIntNailDamage = PlayerData.instance.nailDamage;
+                inoLog.log($"OnSaveLoaded, damage set to: {PlayerData.instance.nailDamage}");
             }
         }
+        #endregion ПРИ СОХРАНЕНИИ/ЗАГРУЗКЕ
 
-        // ПРИ НАНЕСЕНИИ УРОНА ВРАГУ (ИСПОЛЬЗУЕТСЯ ДЛЯ ПРОН. ТЕНИ, ГВОЗДЯ, ТЕХНИК ГВОЗДЯ, ЭЛЕГИИ КУКОЛКИ, КОЛЮЧЕК СТРАДАНИЙ) -----
+        #region ПРИ НАНЕСЕНИИ УРОНА ВРАГУ
         public void OnEnemyDamaged(On.HealthManager.orig_TakeDamage orig, HealthManager self, HitInstance hitInstance)
         {
             if (!GS.EnableMod)
@@ -606,8 +765,8 @@ namespace CustomizableNailDamage
             }
 
             string attackerName = hitInstance.Source?.name ?? "";
-            logf.log($"OnEnemyDamaged: {attackerName}, {hitInstance.Source}, {hitInstance.SpecialType}", false);
-            logf.log($"OnEnemyDamaged, attack type: {hitInstance.AttackType}", false);
+            inoLog.log($"OnEnemyDamaged: {attackerName}, {hitInstance.Source}, {hitInstance.SpecialType}", false);
+            inoLog.log($"OnEnemyDamaged, attack type: {hitInstance.AttackType}", false);
 
             if (hitInstance.AttackType == AttackTypes.SharpShadow)
             {
@@ -616,7 +775,7 @@ namespace CustomizableNailDamage
 
                 if (!GS.EnableFloatNailDamage) // УРОН +/- ТЕНИ
                 {
-                    int dashDamage = Mathf.RoundToInt(GetModifiedSharpShadowDashDamage(LS.CustomIntNailDamage));
+                    int dashDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "sharpshadow"));
                     if (LS.CustomIntNailDamage <= 0)
                     {
                         if (GS.HealEnemiesOverMaxHP)
@@ -652,7 +811,7 @@ namespace CustomizableNailDamage
 
                 else // УРОН ДРОБНОЙ ТЕНИ
                 {
-                    float dashDamage = GetModifiedSharpShadowDashDamage(GS.CustomFloatNailDamage);
+                    float dashDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "sharpshadow");
                     UpdatePool(enemy.gameObject, dashDamage);
                     damageRemainder = GetPool(enemy.gameObject);
                     int damageToDeal = 0;
@@ -679,7 +838,7 @@ namespace CustomizableNailDamage
 
                 if (!GS.EnableFloatNailDamage) // УРОН ВОЛН ЭЛЕГИИ КУКОЛКИ
                 {
-                    int nailBeamDamage = Mathf.RoundToInt(GetModifiedNailBeamDamage(LS.CustomIntNailDamage));
+                    int nailBeamDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "beam"));
                     if (LS.CustomIntNailDamage <= 0)
                     {
                         if (GS.HealEnemiesOverMaxHP)
@@ -713,9 +872,9 @@ namespace CustomizableNailDamage
                     }
                 }
 
-                else // УРОН ДРОБНОЙ ТЕНИ
+                else // УРОН ДРОБНОЙ ВОЛНЫ ЭЛЕГИИ КУКОЛКИ
                 {
-                    float nailBeamDamage = GetModifiedNailBeamDamage(GS.CustomFloatNailDamage);
+                    float nailBeamDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "beam");
                     UpdatePool(enemy.gameObject, nailBeamDamage);
                     damageRemainder = GetPool(enemy.gameObject);
                     int damageToDeal = 0;
@@ -737,13 +896,15 @@ namespace CustomizableNailDamage
 
             else if (hitInstance.AttackType == AttackTypes.Nail)
             {
+                //HeroController.instance.SetMPCharge(0);
+                //HeroController.instance.AddMPCharge(LS.SoulGain);
                 if (attackerName == "Great Slash" || attackerName == "Dash Slash")
                 {
                     var enemy = self.gameObject.GetComponent<HealthManager>();
 
                     if (!GS.EnableFloatNailDamage)
                     {
-                        int nailArtDamage = Mathf.RoundToInt(GetModifiedNailArtDamage(LS.CustomIntNailDamage, false));
+                        int nailArtDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "artslash"));
                         if (LS.CustomIntNailDamage <= 0)
                         {
                             hitInstance.DamageDealt = 1;
@@ -781,7 +942,7 @@ namespace CustomizableNailDamage
                     else
                     {
                         hitInstance.DamageDealt = 1;
-                        float nailArtDamage = GetModifiedNailArtDamage(GS.CustomFloatNailDamage, false);
+                        float nailArtDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "artslash");
                         UpdatePool(enemy.gameObject, nailArtDamage);
                         damageRemainder = GetPool(enemy.gameObject);
                         int damageToDeal = 0;
@@ -807,7 +968,7 @@ namespace CustomizableNailDamage
 
                     if (!GS.EnableFloatNailDamage)
                     {
-                        int nailArtDamage = Mathf.RoundToInt(GetModifiedNailArtDamage(LS.CustomIntNailDamage, true));
+                        int nailArtDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "artcyclone"));
                         if (LS.CustomIntNailDamage <= 0)
                         {
                             hitInstance.DamageDealt = 1;
@@ -845,7 +1006,7 @@ namespace CustomizableNailDamage
                     else
                     {
                         hitInstance.DamageDealt = 1;
-                        float nailArtDamage = GetModifiedNailArtDamage(GS.CustomFloatNailDamage, true);
+                        float nailArtDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "artcyclone");
                         UpdatePool(enemy.gameObject, nailArtDamage);
                         damageRemainder = GetPool(enemy.gameObject);
                         int damageToDeal = 0;
@@ -871,7 +1032,7 @@ namespace CustomizableNailDamage
 
                     if (!GS.EnableFloatNailDamage)
                     {
-                        int nailDamage = Mathf.RoundToInt(GetModifiedNailDamage(LS.CustomIntNailDamage));
+                        int nailDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "nail"));
                         if (LS.CustomIntNailDamage <= 0)
                         {
                             hitInstance.DamageDealt = 1;
@@ -909,7 +1070,7 @@ namespace CustomizableNailDamage
                     else
                     {
                         hitInstance.DamageDealt = 1;
-                        float nailDamage = GetModifiedNailDamage(GS.CustomFloatNailDamage);
+                        float nailDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "nail");
                         UpdatePool(enemy.gameObject, nailDamage);
                         damageRemainder = GetPool(enemy.gameObject);
                         int damageToDeal = 0;
@@ -966,7 +1127,7 @@ namespace CustomizableNailDamage
 
                     else
                     {
-                        UpdatePool(enemy.gameObject, GS.CustomFloatNailDamage);
+                        UpdatePool(enemy.gameObject, LS.CustomFloatNailDamage);
                         damageRemainder = GetPool(enemy.gameObject);
                         int damageToDeal = 0;
 
@@ -1020,7 +1181,7 @@ namespace CustomizableNailDamage
 
                     else
                     {
-                        UpdatePool(enemy.gameObject, GS.CustomFloatNailDamage);
+                        UpdatePool(enemy.gameObject, LS.CustomFloatNailDamage);
                         damageRemainder = GetPool(enemy.gameObject);
                         int damageToDeal = 0;
 
@@ -1040,10 +1201,12 @@ namespace CustomizableNailDamage
                 }
             }
 
+            inoLog.log($"OnEnemyDamaged, damage: {hitInstance.DamageDealt}", false);
             orig(self, hitInstance);
         }
-        // ПРИ НАНЕСЕНИИ УРОНА ВРАГУ (ИСПОЛЬЗУЕТСЯ ДЛЯ ПРОН. ТЕНИ, ГВОЗДЯ, ТЕХНИК ГВОЗДЯ, ЭЛЕГИИ КУКОЛКИ, КОЛЮЧЕК СТРАДАНИЙ) -----
+        #endregion ПРИ НАНЕСЕНИИ УРОНА ВРАГУ
 
+        #region ОБНОВЛЕНИЯ СЛОВАРЕЙ
         private void OnReceiveDeathEvent(EnemyDeathEffects enemyDeathEffects, bool eventAlreadyReceived, ref float? attackDirection, ref bool resetDeathEvent, ref bool spellBurn, ref bool isWatery)
         {
             if (!GS.EnableMod) return;
@@ -1053,7 +1216,7 @@ namespace CustomizableNailDamage
             enemyMaxHealth.Remove(corpse);
             fractionalPool.Remove(corpse);
 
-            logf.log($"OnReceiveDeathEvent: removed {corpse.name} from dictionaries — enemy is dead", false);
+            inoLog.log($"OnReceiveDeathEvent: removed {corpse.name} from dictionaries — enemy is dead", false);
         }
 
         private bool OnEnableEnemy(GameObject enemy, bool isDead)
@@ -1066,12 +1229,14 @@ namespace CustomizableNailDamage
             {
                 enemyMaxHealth[enemy] = hm.hp;
                 fractionalPool[enemy] = 0f;
-                logf.log($"OnEnableEnemy: {enemy.name} with max HP: {hm.hp}", false);
+                inoLog.log($"OnEnableEnemy: {enemy.name} with max HP: {hm.hp}", false);
             }
 
             return isDead;
         }
+        #endregion ОБНОВЛЕНИЯ СЛОВАРЕЙ
 
+        #region ПРИ СМЕНЕ СЦЕНЫ
         private void OnSceneChanged(Scene from, Scene to)
         {
             // ОЧИЩАЕМ СЛОВАРИ
@@ -1089,7 +1254,9 @@ namespace CustomizableNailDamage
                 ModDisplay.Instance?.Destroy();
             }
         }
+        #endregion ПРИ СМЕНЕ СЦЕНЫ
 
+        #region ПРИ ИЗМЕНЕНИИ ГЕРОЯ
         public void OnHeroUpdate()
         {
             if (!GS.EnableMod) // ЕСЛИ МОД ОТКЛЮЧЁН, ТО УДАЛИТЬ ДИСПЛЕЙ
@@ -1111,6 +1278,7 @@ namespace CustomizableNailDamage
                 {
                     UpdateNailDamage(LS.StoredNailDamage);
                     LS.HasStoredValue = false;
+                    inoLog.log($"OnHeroUpdate, damage set to: {LS.StoredNailDamage}");
                 }
             }
             
@@ -1136,11 +1304,11 @@ namespace CustomizableNailDamage
                     ModDisplay.Instance = new ModDisplay();
                 if (!GS.EnableFloatNailDamage)
                 {
-                    float modified = GetModifiedNailDamage(LS.CustomIntNailDamage);
-                    GS.ModifiedNailDamage = Mathf.RoundToInt(modified);
+                    float modified = GetModifiedDamage(LS.CustomIntNailDamage, "nail");
+                    LS.ModifiedNailDamage = Mathf.RoundToInt(modified);
                 }
                 else
-                    GS.ModifiedNailDamage = GetModifiedNailDamage(GS.CustomFloatNailDamage);
+                    LS.ModifiedNailDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "nail");
                 ModDisplay.Instance.Display(BuildDisplayText());
             }
             else
@@ -1150,15 +1318,15 @@ namespace CustomizableNailDamage
             if (GS.keybinds.IncreaseNailDamage.WasPressed)
             {
                 IncreaseNailDamage(1);
-                float modified = GetModifiedNailDamage(LS.CustomIntNailDamage);
-                GS.ModifiedNailDamage = Mathf.RoundToInt(modified);
+                float modified = GetModifiedDamage(LS.CustomIntNailDamage, "nail");
+                LS.ModifiedNailDamage = Mathf.RoundToInt(modified);
             }
 
             if (GS.keybinds.DecreaseNailDamage.WasPressed)
             {
                 DecreaseNailDamage(1);
-                float modified = GetModifiedNailDamage(LS.CustomIntNailDamage);
-                GS.ModifiedNailDamage = Mathf.RoundToInt(modified);
+                float modified = GetModifiedDamage(LS.CustomIntNailDamage, "nail");
+                LS.ModifiedNailDamage = Mathf.RoundToInt(modified);
             }
 
             // УБОГАЯ ЛОГИКА ОТОБРАЖЕНИЯ ДИСПЛЕЯ -----
@@ -1175,5 +1343,6 @@ namespace CustomizableNailDamage
             }
             // УБОГАЯ ЛОГИКА ОТОБРАЖЕНИЯ ДИСПЛЕЯ -----
         }
+        #endregion ПРИ ИЗМЕНЕНИИ ГЕРОЯ
     }
 }
