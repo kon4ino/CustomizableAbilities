@@ -2,6 +2,7 @@
 
 Mod that allows you to change the damage of the nail, including negative and fractional values. Negative nail damage heals enemies.
 **This mod provides the following features:**
+----------
 
 Conveniently change integer nail damage (including negative) using standard keybinds (U — +1 damage, I — -1 damage), or by entering a custom value in the menu.
 
@@ -13,6 +14,7 @@ Customize the amount of SOUL gained from nail hits — separately for the main v
 
 
 **Additional settings include:**
+----------
 
 Toggle the mod on/off.
 
