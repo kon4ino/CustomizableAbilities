@@ -1,6 +1,6 @@
 # CustomizableNailDamage — ino_ (kon4ino)
 
-Mod that allows you to change the damage of the nail, including negative and fractional values. Negative nail damage heals enemies.
+Mod that allows you to change the damage of the nail, including negative and fractional values, and also the amount of soul received from nail hits. Negative nail damage heals enemies.
 **This mod provides the following features:**
 ----------
 
