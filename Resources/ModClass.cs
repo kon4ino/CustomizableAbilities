@@ -27,7 +27,7 @@ using UnityEngine.SceneManagement;
 using Mono.Cecil.Cil;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.3.2.0
+/* mod by ino_ (kon4ino), 1.3.2.1
  thank CharmChanger mod for some code */
 
 namespace CustomizableAbilities
@@ -111,7 +111,7 @@ namespace CustomizableAbilities
     {
         #region SHIT HAPPENS
         public CustomizableAbilities() : base("CustomizableAbilities") { }
-        public override string GetVersion() => "1.3.2.0";
+        public override string GetVersion() => "1.3.2.1";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
@@ -239,13 +239,10 @@ namespace CustomizableAbilities
             if (newValue > 0)
             {
                 PlayerData.instance.nailDamage = newValue;
-                PlayerData.instance.nailSmithUpgrades = newValue;
-
             }
             else
             {
                 PlayerData.instance.nailDamage = 1;
-                PlayerData.instance.nailSmithUpgrades = 1;
             }
             LS.CustomIntNailDamage = newValue;
             PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
@@ -255,7 +252,6 @@ namespace CustomizableAbilities
             if (!(LS.CustomIntNailDamage < 1))
             {
                 PlayerData.instance.nailDamage += newValue;
-                PlayerData.instance.nailSmithUpgrades += newValue;
             }
             LS.CustomIntNailDamage += newValue;
             PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
@@ -265,12 +261,10 @@ namespace CustomizableAbilities
             if (PlayerData.instance.nailDamage - newValue > 0)
             {
                 PlayerData.instance.nailDamage -= newValue;
-                PlayerData.instance.nailSmithUpgrades -= newValue;
             }
             else
             {
                 PlayerData.instance.nailDamage = 1;
-                PlayerData.instance.nailSmithUpgrades = 1;
             }
             LS.CustomIntNailDamage -= newValue;
             PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
@@ -1674,7 +1668,6 @@ namespace CustomizableAbilities
                 ModDisplay.Instance?.Destroy();
                 return;
             }
-
             if (LS.firstLoading)
             {
                 LS.CustomIntNailDamage = PlayerData.instance.nailDamage;
