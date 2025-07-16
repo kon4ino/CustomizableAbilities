@@ -1,6 +1,9 @@
 # CustomizableAbilities — ino_ (kon4ino)
 
 Mod that allows you to customize abilities: negative and fractional nail; the amount of SOUL received from nail hits; spells. Negative nail damage heals enemies.
+
+
+----------
 **This mod provides the following features:**
 ----------
 
