@@ -58,6 +58,12 @@
     <Reference Include="Satchel">
       <HintPath>$(HollowKnightRefs)/Mods/Satchel/Satchel.dll</HintPath>
     </Reference>
+    <Reference Include="HKMirror">
+      <HintPath>$(HollowKnightRefs)/Mods/HKMirror/HKMirror.dll</HintPath>
+    </Reference>
+    <Reference Include="SFCore">
+      <HintPath>$(HollowKnightRefs)/Mods/SFCore/SFCore.dll</HintPath>
+    </Reference>
     <Reference Include="Assembly-CSharp-firstpass">
       <HintPath>$(HollowKnightRefs)/Assembly-CSharp-firstpass.dll</HintPath>
     </Reference>

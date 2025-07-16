@@ -2,7 +2,7 @@
 using System;
 using UnityEngine;
 
-namespace CustomizableNailDamage
+namespace CustomizableAbilities
 {
     internal class ModDisplay
     {

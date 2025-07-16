@@ -1,8 +1,8 @@
 ﻿using GlobalEnums;
-//using HKMirror;
-//using HKMirror.Hooks.ILHooks;
-//using HKMirror.Hooks.OnHooks;
-//using HKMirror.Reflection.SingletonClasses;
+using HKMirror;
+using HKMirror.Hooks.ILHooks;
+using HKMirror.Hooks.OnHooks;
+using HKMirror.Reflection.SingletonClasses;
 using HutongGames.PlayMaker;
 using HutongGames.PlayMaker.Actions;
 using IL;
@@ -16,7 +16,7 @@ using On.HutongGames.PlayMaker;
 using Satchel;
 using Satchel.BetterMenus;
 using Satchel.Futils;
-//using SFCore.Utils;
+using SFCore.Utils;
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -27,16 +27,16 @@ using UnityEngine.SceneManagement;
 using Mono.Cecil.Cil;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.3.1.0
+/* mod by ino_ (kon4ino), 1.3.2.0
  thank CharmChanger mod for some code */
 
-namespace CustomizableNailDamage
+namespace CustomizableAbilities
 {
 
     #region ЛОГИРОВАНИЕ
     public static class inoLog
     {
-        private static bool enablelog = true;
+        private static bool enablelog = false;
         public static void log<T>(T messagetolog)
         {
             if (enablelog)
@@ -80,7 +80,6 @@ namespace CustomizableNailDamage
         public bool EnableMod = true;
         public bool DisplayNailDamage = false;
         public bool HealEnemiesOverMaxHP = true;
-        public int NailUpgrade = 0;
 
         [JsonConverter(typeof(PlayerActionSetConverter))]
         public KeyBinds keybinds = new KeyBinds();
@@ -93,22 +92,31 @@ namespace CustomizableNailDamage
         public int CustomIntNailDamage = PlayerData.instance.nailDamage;
         public float CustomFloatNailDamage = 0.1f;
         public float ModifiedNailDamage = 0.0f;
+        public int NailUpgrade = 0;
         public int SoulGain = 11;
         public int ReserveSoulGain = 6;
         public int StoredNailDamage = 0;
         public bool HasStoredValue = false;
         public bool firstLoading = true;
+        public int CustomVengefulSpiritDamage = 15;
+        public int CustomDesolateDiveDamage = 35;
+        public int CustomHowlingWraithsDamage = 39;
+        public int CustomShadeSoulDamage = 30;
+        public int CustomDescendingDarkDamage = 60; // ИЛИ 65
+        public int CustomAbyssShriekDamage = 80;
     }
     #endregion ЛОКАЛЬНЫЕ НАСТРОЙКИ
 
-    public class CustomizableNailDamage : Mod, ICustomMenuMod, IGlobalSettings<GlobalSettings>, ILocalSettings<LocalSettings>
+    public class CustomizableAbilities : Mod, ICustomMenuMod, IGlobalSettings<GlobalSettings>, ILocalSettings<LocalSettings>
     {
         #region SHIT HAPPENS
-        public CustomizableNailDamage() : base("CustomizableNailDamage") { }
-        public override string GetVersion() => "1.3.1.0";
+        public CustomizableAbilities() : base("CustomizableAbilities") { }
+        public override string GetVersion() => "1.3.2.0";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
+        private Menu nailMenu;
+        private Menu spellsMenu;
         private float damageRemainder = 0f; // ОСТАТОК ДЛЯ ДРОБНОГО ГВОЗДЯ
         private Dictionary<GameObject, int> enemyMaxHealth = new(); // СЛОВАРЬ В КОТОРОМ ХРАНЯТСЯ МАКС. ЗДОРОВЬЕ КАЖДОГО ВРАГА
         private Dictionary<GameObject, float> fractionalPool = new(); // СЛОВАРЬ В КОТОРОМ ХРАНЯТСЯ ОСТАТКИ ДРОБНОГО УРОНА ДЛЯ КАЖДОГО ВРАГА
@@ -120,6 +128,25 @@ namespace CustomizableNailDamage
         private const int Charm_Strength = 25;
         private const int Charm_Fury = 6;
         private const int Charm_DashMaster = 31;
+        private const int Charm_ShamanStone = 19;
+
+        private const float Percentage_Dive_Desolate_Dive_Damage = 0.43f;
+        private const float Percentage_Shockwave_Desolate_Dive_Damage = 0.57f;
+        private const float Percentage_Howling_Wraiths_Damage_Per_Hit = 0.33f;
+        private const float Percentage_Dive_Descending_Dark_Damage = 0.25f;
+        private const float Percentage_Shockwave_1_Descending_Dark_Damage = 0.5f;
+        private const float Percentage_Shockwave_2_Descending_Dark_Damage = 0.25f;
+        private const float Percentage_Abyss_Shriek_Damage_Per_Hit = 0.25f;
+
+        private const float Percentage_Fireball_Flukenest_Scaling = 0.27f;
+        private const float Percentage_Fireball2_Flukenest_Scaling = 0.13f;
+        private const float Percentage_Fireball_Flukenest_Shaman_Stone_Scaling = 1.25f;
+        private const float Percentage_Fireball_Shaman_Stone_Scaling = 1.33f;
+        private const float Percentage_DDive_Shaman_Stone_Scaling = 1.51f;
+        private const float Percentage_DDark_Shaman_Stone_Scaling = 1.47f;
+        private const float Percentage_SHeads_Shaman_Stone_Scaling = 1.5f;
+
+        private const float Percentage_Flukenest_Defenders_Crest_Shaman_Stone_Scaling = 0.75f;
         #endregion SHIT HAPPENS
 
         #region ВКЛ/ВЫКЛ МОД
@@ -134,10 +161,15 @@ namespace CustomizableNailDamage
             On.HealthManager.TakeDamage -= OnEnemyDamaged;
             On.SetHP.OnEnter -= DreamShieldDamage;
             On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter -= ThornsOfAgonyDamage;
-            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter -= StrengthDamageIncrease;
-            On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter -= FotFNailScaling;
-            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter -= FotFNailArtScaling;
+            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter -= SetStrengthDamage;
+            On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter -= FuryNailScaling;
+            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter -= FuryNailArtScaling;
             IL.HeroController.SoulGain -= CustomSoulGain;
+            On.HeroController.SoulGain -= NegativeSoulGain;
+            On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter -= SpellsDamage;
+            On.HutongGames.PlayMaker.Actions.FloatCompare.OnEnter -= QMegaDamage;
+            On.SpellFluke.DoDamage -= OnFlukeDamage;
+            On.HutongGames.PlayMaker.Actions.Wait.OnEnter -= FlukenestDefendersCrestDamage;
 
             Log("Disabled");
         }
@@ -151,10 +183,15 @@ namespace CustomizableNailDamage
             On.HealthManager.TakeDamage += OnEnemyDamaged;
             On.SetHP.OnEnter += DreamShieldDamage;
             On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter += ThornsOfAgonyDamage;
-            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += StrengthDamageIncrease;
-            On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter += FotFNailScaling;
-            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += FotFNailArtScaling;
+            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += SetStrengthDamage;
+            On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter += FuryNailScaling;
+            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += FuryNailArtScaling;
             IL.HeroController.SoulGain += CustomSoulGain;
+            On.HeroController.SoulGain += NegativeSoulGain;
+            On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter += SpellsDamage;
+            On.HutongGames.PlayMaker.Actions.FloatCompare.OnEnter += QMegaDamage;
+            On.SpellFluke.DoDamage += OnFlukeDamage;
+            On.HutongGames.PlayMaker.Actions.Wait.OnEnter += FlukenestDefendersCrestDamage;
 
             Log("Enabled");
         }
@@ -299,32 +336,34 @@ namespace CustomizableNailDamage
 
             return modified;
         }
+
+        private float CalculateFlukeDamageInterval(int baseDamage, int customDamage)
+        {
+            float scaling = customDamage / baseDamage;
+            int totalFlukeDamage = Mathf.RoundToInt(26 * scaling);
+            int cloudDamage = Mathf.Max(totalFlukeDamage - 3, 1);
+            float cloudDPS = cloudDamage / 2.3f;
+            return 1f / cloudDPS;
+        }
         #endregion РАССЧЁТ УРОНА
 
         #region МЕНЮ
-        public MenuScreen GetMenuScreen(MenuScreen modListMenu, ModToggleDelegates? toggleDelegates)
+        private Menu CreateNailMenu(MenuScreen parentMenu)
         {
-            if (menuRef == null)
+            return nailMenu = new Menu("Nail Settings", new Element[]
             {
-                menuRef = new Menu("CustomizableNailDamage", new Element[]
-                {
-
-                    new HorizontalOption // ВКЛ/ВЫКЛ МОД
+                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ УРОНА ГВОЗДЯ
                     (
-                        name: "Enable Mod",
-                        description: "Toggle mod On/Off",
+                        name: "Show Nail Damage",
+                        description: "Toggle display On/Off",
                         values: new[] { "Off", "On" },
                         applySetting: index =>
                         {
-                            GS.EnableMod = index == 1;
+                            GS.DisplayNailDamage = index == 1;
                             OnSaveGlobal();
-                            if (!GS.EnableMod)
-                                DisableMod();
-                            else
-                                EnableMod();
                         },
 
-                        loadSetting: () => GS.EnableMod ? 1 : 0
+                        loadSetting: () => GS.DisplayNailDamage ? 1 : 0
                     ),
 
                     new HorizontalOption // ВКЛ/ВЫКЛ ДРОБНЫЙ УРОН ГВОЗДЯ
@@ -345,34 +384,6 @@ namespace CustomizableNailDamage
                         loadSetting: () => GS.EnableFloatNailDamage ? 1 : 0
                     ),
 
-                    new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ УРОНА ГВОЗДЯ
-                    (
-                        name: "Show Nail Damage",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.DisplayNailDamage = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.DisplayNailDamage ? 1 : 0
-                    ),
-
-                    new HorizontalOption // ХИЛИТЬ ВРАГОВ ПОВЕРХ ИХ МАКСИМАЛЬНОГО ХП
-                    (
-                        name: "Heal Enemies Over Their Max HP",
-                        description: "Toggle healing (negative) nail logic",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.HealEnemiesOverMaxHP = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.HealEnemiesOverMaxHP ? 1 : 0
-                    ),
-
                     new HorizontalOption // ПРЕСЕТ ВАНИЛЬНЫХ ГВОЗДЕЙ
                     (
                         name: "Set Vanilla Nail Damage",
@@ -388,10 +399,11 @@ namespace CustomizableNailDamage
                                     vanillaDmg = -1 * (5 * (index-4) - (index-4) + 1);
                                 UpdateNailDamage(vanillaDmg);
                                 LS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedDamage(vanillaDmg, "nail"));
+                                OnSaveLocal();
                             }
                         },
 
-                        loadSetting: () => GS.NailUpgrade
+                        loadSetting: () => LS.NailUpgrade
                     ),
 
                     Blueprints.IntInputField // УРОН ЦЕЛОГО ГВОЗДЯ
@@ -407,18 +419,11 @@ namespace CustomizableNailDamage
                             {
                                 LS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "nail"));
                             }
-
-                            var inputFieldElement = (InputField)menuRef.Find("NailDamage_Input");
-                            if (inputFieldElement != null)
-                            {
-                                inputFieldElement.userInput = LS.CustomIntNailDamage.ToString();
-                            }
                         },
                         () => LS.CustomIntNailDamage,
                         21,
                         "DMG",
-                        5,
-                        Id: "NailDamage_Input"
+                        5
                     ),
 
                     new HundredthSlider // УРОН ДРОБНОГО ГВОЗДЯ
@@ -443,22 +448,15 @@ namespace CustomizableNailDamage
                         "Main Vessel Soul Gain",
                         soulgain =>
                         {
-                            soulgain = Mathf.Clamp(soulgain, 0, 198);
+                            soulgain = Mathf.Clamp(soulgain, -198, 198);
 
                             LS.SoulGain = soulgain;
                             OnSaveLocal();
-
-                            var inputFieldElement = (InputField)menuRef.Find("SoulGain_Input");
-                            if (inputFieldElement != null)
-                            {
-                                inputFieldElement.userInput = LS.SoulGain.ToString();
-                            }
                         },
                         () => LS.SoulGain,
                         11,
                         "VAL",
-                        3,
-                        Id: "SoulGain_Input"
+                        4
                     ),
 
                     Blueprints.IntInputField // КОЛИЧЕСТВО РЕЗЕРВНОЙ ДУШИ ПОЛУЧАЕМОЙ С УДАРА
@@ -466,23 +464,198 @@ namespace CustomizableNailDamage
                         "Reserve Vessel Soul Gain",
                         soulgain =>
                         {
-                            soulgain = Mathf.Clamp(soulgain, 0, 198);
+                            soulgain = Mathf.Clamp(soulgain, -198, 198);
 
                             LS.ReserveSoulGain = soulgain;
                             OnSaveLocal();
-
-                            var inputFieldElement = (InputField)menuRef.Find("ReserveSoulGain_Input");
-                            if (inputFieldElement != null)
-                            {
-                                inputFieldElement.userInput = LS.ReserveSoulGain.ToString();
-                            }
                         },
                         () => LS.ReserveSoulGain,
                         6,
                         "VAL",
-                        3,
-                        Id: "ReserveSoulGain_Input"
+                        4
                     ),
+
+                    new MenuButton
+                    (
+                        name: "Reset Nail Settings To Defaults",
+                        description: "Nail damage will be set to Pure (21)",
+                        submitAction: (_) =>
+                        {
+                            if (GS.EnableMod)
+                            {
+                                GS.EnableFloatNailDamage = false;
+                                GS.DisplayNailDamage = true;
+                                LS.CustomFloatNailDamage = 0.1f;
+                                LS.NailUpgrade = 0;
+
+                                LS.CustomIntNailDamage = 21;
+                                LS.ModifiedNailDamage = GetModifiedDamage(LS.CustomIntNailDamage, "nail");
+                                LS.SoulGain = 11;
+                                LS.ReserveSoulGain = 6;
+
+                                OnSaveGlobal();
+                                OnSaveLocal();
+                                nailMenu?.Update();
+                            }
+                        }
+                    )
+            });
+        }
+        private Menu CreateSpellsMenu(MenuScreen parentMenu)
+        {
+            return spellsMenu = new Menu("Spells Settings", new Element[]
+            {
+                Blueprints.IntInputField // УРОН МСТИТЕЛЬНОГО ДУХА
+                    (
+                        "Vengeful Spirit Damage",
+                        vspiritdmg =>
+                        {
+                            vspiritdmg = Mathf.Clamp(vspiritdmg, 1, 9999);
+                            LS.CustomVengefulSpiritDamage = vspiritdmg;
+                            OnSaveLocal();
+                        },
+                        () => LS.CustomVengefulSpiritDamage,
+                        15,
+                        "DMG",
+                        5
+                    ),
+                Blueprints.IntInputField // УРОН ОПУСТОШАЮЩЕГО ПИКЕ
+                    (
+                        "Desolate Dive Damage",
+                        ddivedmg =>
+                        {
+                            ddivedmg = Mathf.Clamp(ddivedmg, 1, 9999);
+                            LS.CustomDesolateDiveDamage = ddivedmg;
+                            OnSaveLocal();
+                        },
+                        () => LS.CustomDesolateDiveDamage,
+                        35,
+                        "DMG",
+                        5
+                    ),
+                Blueprints.IntInputField // УРОН ВОЮЩИХ ДУХОВ
+                    (
+                        "Howling Wraiths Damage",
+                        hwraithsdmg =>
+                        {
+                            hwraithsdmg = Mathf.Clamp(hwraithsdmg, 1, 9999);
+                            LS.CustomHowlingWraithsDamage = hwraithsdmg;
+                            OnSaveLocal();
+                        },
+                        () => LS.CustomHowlingWraithsDamage,
+                        39,
+                        "DMG",
+                        5
+                    ),
+
+                Blueprints.IntInputField // УРОН ТЕНЕВОЙ ДУШИ
+                    (
+                        "Shade Soul Damage",
+                        ssouldmg =>
+                        {
+                            ssouldmg = Mathf.Clamp(ssouldmg, 1, 9999);
+                            LS.CustomShadeSoulDamage = ssouldmg;
+                            OnSaveLocal();
+                        },
+                        () => LS.CustomShadeSoulDamage,
+                        30,
+                        "DMG",
+                        5
+                    ),
+                Blueprints.IntInputField // УРОН НИСХОДЯЩЕЙ ТЬМЫ
+                    (
+                        "Descending Dark Damage",
+                        ddarkdmg =>
+                        {
+                            ddarkdmg = Mathf.Clamp(ddarkdmg, 1, 9999);
+                            LS.CustomDescendingDarkDamage = ddarkdmg;
+                            OnSaveLocal();
+                        },
+                        () => LS.CustomDescendingDarkDamage,
+                        60,
+                        "DMG",
+                        5
+                    ),
+                Blueprints.IntInputField // УРОН ВОПЛЯ БЕЗДНЫ
+                    (
+                        "Abyss Shriek Damage",
+                        ashriekdmg =>
+                        {
+                            ashriekdmg = Mathf.Clamp(ashriekdmg, 1, 9999);
+                            LS.CustomAbyssShriekDamage = ashriekdmg;
+                            OnSaveLocal();
+                        },
+                        () => LS.CustomAbyssShriekDamage,
+                        80,
+                        "DMG",
+                        5
+                    ),
+
+                new MenuButton
+                    (
+                        name: "Reset Spells Settings To Defaults",
+                        description: "",
+                        submitAction: (_) =>
+                        {
+                            if (GS.EnableMod)
+                            {
+                                LS.CustomVengefulSpiritDamage = 15;
+                                LS.CustomDesolateDiveDamage = 30;
+                                LS.CustomHowlingWraithsDamage = 39;
+                                LS.CustomShadeSoulDamage = 30;
+                                LS.CustomDescendingDarkDamage = 60;
+                                LS.CustomAbyssShriekDamage = 80;
+
+                                OnSaveGlobal();
+                                OnSaveLocal();
+                                spellsMenu?.Update();
+                            }
+                        }
+                    )
+            });
+        }
+    
+        public MenuScreen GetMenuScreen(MenuScreen modListMenu, ModToggleDelegates? toggleDelegates)
+        {
+            if (menuRef == null)
+            {
+                menuRef = new Menu("CustomizableAbilities", new Element[]
+                {
+
+                    new HorizontalOption // ВКЛ/ВЫКЛ МОД
+                    (
+                        name: "Enable Mod",
+                        description: "Toggle mod On/Off",
+                        values: new[] { "Off", "On" },
+                        applySetting: index =>
+                        {
+                            GS.EnableMod = index == 1;
+                            OnSaveGlobal();
+                            if (!GS.EnableMod)
+                                DisableMod();
+                            else
+                                EnableMod();
+                        },
+
+                        loadSetting: () => GS.EnableMod ? 1 : 0
+                    ),
+
+                    new HorizontalOption // ХИЛИТЬ ВРАГОВ ПОВЕРХ ИХ МАКСИМАЛЬНОГО ХП
+                    (
+                        name: "Heal Enemies Over Their Max HP",
+                        description: "Toggle healing (negative) damage logic",
+                        values: new[] { "Off", "On" },
+                        applySetting: index =>
+                        {
+                            GS.HealEnemiesOverMaxHP = index == 1;
+                            OnSaveGlobal();
+                        },
+
+                        loadSetting: () => GS.HealEnemiesOverMaxHP ? 1 : 0
+                    ),
+
+                    Blueprints.NavigateToMenu("Nail Settings", "", () => CreateNailMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
+                    Blueprints.NavigateToMenu("Spells Settings", "", () => CreateSpellsMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
 
                     new KeyBind
                     (
@@ -505,21 +678,12 @@ namespace CustomizableNailDamage
                     new MenuButton
                     (
                         name: "Reset Defaults",
-                        description: "Nail damage will be set to Pure (21)",
+                        description: "",
                         submitAction: (_) =>
                         {
                             if (GS.EnableMod)
                             {
-                                GS.EnableFloatNailDamage = false;
-                                GS.DisplayNailDamage = true;
-                                LS.CustomFloatNailDamage = 0.1f;
-                                GS.NailUpgrade = 0;
                                 GS.HealEnemiesOverMaxHP = true;
-
-                                LS.CustomIntNailDamage = 21;
-                                LS.ModifiedNailDamage = GetModifiedDamage(LS.CustomIntNailDamage, "nail");
-                                LS.SoulGain = 11;
-                                LS.ReserveSoulGain = 6;
 
                                 GS.keybinds.IncreaseNailDamage.ClearBindings();
                                 GS.keybinds.DecreaseNailDamage.ClearBindings();
@@ -546,6 +710,8 @@ namespace CustomizableNailDamage
         #region ПОДКЛЮЧЕНИЕ ХУКОВ
         public override void Initialize(Dictionary<string, Dictionary<string, GameObject>> preloadedObjects)
         {
+            Log("Initializing");
+
             base.Initialize(preloadedObjects);
             ModHooks.BeforeSavegameSaveHook += OnSaveSaved;
             ModHooks.AfterSavegameLoadHook += OnSaveLoaded;
@@ -555,15 +721,256 @@ namespace CustomizableNailDamage
             On.HealthManager.TakeDamage += OnEnemyDamaged;
             On.SetHP.OnEnter += DreamShieldDamage;
             On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter += ThornsOfAgonyDamage;
-            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += StrengthDamageIncrease;
-            On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter += FotFNailScaling;
-            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += FotFNailArtScaling;
+            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += SetStrengthDamage;
+            On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter += FuryNailScaling;
+            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += FuryNailArtScaling;
             UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChanged;
             IL.HeroController.SoulGain += CustomSoulGain;
+            On.HeroController.SoulGain += NegativeSoulGain;
+            On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter += SpellsDamage;
+            On.HutongGames.PlayMaker.Actions.FloatCompare.OnEnter += QMegaDamage;
+            On.SpellFluke.DoDamage += OnFlukeDamage;
+            On.HutongGames.PlayMaker.Actions.Wait.OnEnter += FlukenestDefendersCrestDamage;
 
             Log("Initialized");
         }
         #endregion ПОДКЛЮЧЕНИЕ ХУКОВ
+
+        #region УРОН ТРЕМОГНЕЗДА
+        private void OnFlukeDamage(On.SpellFluke.orig_DoDamage orig, SpellFluke self, GameObject obj, int upwardRecursionAmount, bool burst)
+        {
+            if (!GS.EnableMod)
+            {
+                orig(self, obj, upwardRecursionAmount, burst);
+                return;
+            }
+
+            var enemy = obj.gameObject.GetComponent<HealthManager>();
+            inoLog.log($"OnFlukeDamage, enemy hp: {enemy.hp}");
+            if (PlayerData.instance.fireballLevel == 1)
+            {
+                if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
+                {
+                    if (Mathf.RoundToInt(LS.CustomVengefulSpiritDamage * Percentage_Fireball_Flukenest_Scaling * Percentage_Fireball_Flukenest_Shaman_Stone_Scaling) != 5)
+                    {
+                        int totaldamage = Mathf.RoundToInt(LS.CustomVengefulSpiritDamage * Percentage_Fireball_Flukenest_Scaling * Percentage_Fireball_Flukenest_Shaman_Stone_Scaling) - 5;
+                        enemy.hp -= totaldamage;
+                    }
+                }
+                else
+                {
+                    if (Mathf.RoundToInt(LS.CustomVengefulSpiritDamage * Percentage_Fireball_Flukenest_Scaling) != 4)
+                    {
+                        int totaldamage = Mathf.RoundToInt(LS.CustomVengefulSpiritDamage * Percentage_Fireball_Flukenest_Scaling) - 4;
+                        enemy.hp -= totaldamage;
+                    }
+                }
+            }
+            else if (PlayerData.instance.fireballLevel == 2)
+            {
+                if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
+                {
+                    if (Mathf.RoundToInt(LS.CustomShadeSoulDamage * Percentage_Fireball2_Flukenest_Scaling * Percentage_Fireball_Flukenest_Shaman_Stone_Scaling) != 5)
+                    {
+                        int totaldamage = Mathf.RoundToInt(LS.CustomShadeSoulDamage * Percentage_Fireball2_Flukenest_Scaling * Percentage_Fireball_Flukenest_Shaman_Stone_Scaling) - 5;
+                        enemy.hp -= totaldamage;
+                    }
+                }
+                else
+                {
+                    if (Mathf.RoundToInt(LS.CustomShadeSoulDamage * Percentage_Fireball2_Flukenest_Scaling) != 4)
+                    {
+                        int totaldamage = Mathf.RoundToInt(LS.CustomShadeSoulDamage * Percentage_Fireball2_Flukenest_Scaling) - 4;
+                        enemy.hp -= totaldamage;
+                    }
+                }
+            }
+            orig(self, obj, upwardRecursionAmount, burst);
+        }
+
+        private void FlukenestDefendersCrestDamage(On.HutongGames.PlayMaker.Actions.Wait.orig_OnEnter orig, Wait self)
+        {
+            if (!GS.EnableMod)
+            {
+                orig(self);
+                return;
+            }
+
+            if (self.Fsm.GameObject.name == "Knight Dung Cloud" && self.Fsm.Name == "Control" && self.State.Name == "Collider On")
+            {
+                float interval = -1;
+
+                if (PlayerData.instance.fireballLevel == 1 && LS.CustomVengefulSpiritDamage != 15)
+                    interval = CalculateFlukeDamageInterval(15, LS.CustomVengefulSpiritDamage);
+                else if (PlayerData.instance.fireballLevel == 2 && LS.CustomShadeSoulDamage != 30)
+                    interval = CalculateFlukeDamageInterval(30, LS.CustomShadeSoulDamage);
+
+                if (interval > 0f)
+                {
+                    if (PlayerDataAccess.equippedCharm_19)
+                        interval *= Percentage_Flukenest_Defenders_Crest_Shaman_Stone_Scaling;
+
+                    self.Fsm.GameObject.GetComponent<DamageEffectTicker>().SetDamageInterval(interval);
+                }
+            }
+
+            orig(self);
+        }
+        #endregion УРОН ТРЕМОГНЕЗДА
+
+        #region УРОН СПЕЛЛОВ
+        private void SpellsDamage(On.HutongGames.PlayMaker.Actions.SetFsmInt.orig_OnEnter orig, SetFsmInt self)
+        {
+            if (!GS.EnableMod)
+            {
+                orig(self);
+                return;
+            }
+            if (self.Fsm.GameObject.name == "Fireball(Clone)" && self.Fsm.Name == "Fireball Control" && self.State.Name == "Set Damage")
+            {
+                if (self.State.ActiveActionIndex == 2)
+                {
+                    self.setValue.Value = LS.CustomVengefulSpiritDamage;
+                }
+                else if (self.State.ActiveActionIndex == 4)
+                {
+                    self.setValue.Value = Mathf.RoundToInt(LS.CustomVengefulSpiritDamage * Percentage_Fireball_Shaman_Stone_Scaling);
+                }
+            }
+            else if (self.Fsm.GameObject.name == "Fireball2 Spiral(Clone)" && self.Fsm.Name == "Fireball Control" && self.State.Name == "Set Damage")
+            {
+                if (self.State.ActiveActionIndex == 3)
+                {
+                    self.setValue.Value = LS.CustomShadeSoulDamage;
+                }
+                else if (self.State.ActiveActionIndex == 5)
+                {
+                    self.setValue.Value = Mathf.RoundToInt(LS.CustomShadeSoulDamage * Percentage_Fireball_Shaman_Stone_Scaling);
+                }
+            }
+            else if (self.Fsm.Name == "Set Damage" && self.State.Name == "Set Damage")
+            {
+                if (self.Fsm.GameObject.transform.parent.gameObject.name == "Scr Heads")
+                {
+                    if (self.State.ActiveActionIndex == 0)
+                    {
+                        self.setValue.Value = Mathf.RoundToInt(LS.CustomHowlingWraithsDamage * Percentage_Howling_Wraiths_Damage_Per_Hit);
+                    }
+                    else if (self.State.ActiveActionIndex == 2)
+                    {
+                        self.setValue.Value = Mathf.RoundToInt(LS.CustomHowlingWraithsDamage * Percentage_Howling_Wraiths_Damage_Per_Hit * Percentage_SHeads_Shaman_Stone_Scaling);
+                    }
+                }
+                else if (self.Fsm.GameObject.transform.parent.gameObject.name == "Scr Heads 2")
+                {
+                    if (self.State.ActiveActionIndex == 0)
+                    {
+                        self.setValue.Value = Mathf.RoundToInt(LS.CustomAbyssShriekDamage * Percentage_Abyss_Shriek_Damage_Per_Hit);
+                    }
+                    else if (self.State.ActiveActionIndex == 2)
+                    {
+                        self.setValue.Value = Mathf.RoundToInt(LS.CustomAbyssShriekDamage * Percentage_Abyss_Shriek_Damage_Per_Hit * Percentage_SHeads_Shaman_Stone_Scaling);
+                    }
+                }
+                else if (self.Fsm.GameObject.transform.parent.gameObject.name == "Q Slam")
+                {
+                    if (self.State.ActiveActionIndex == 0)
+                    {
+                        self.setValue.Value = Mathf.RoundToInt(LS.CustomDesolateDiveDamage * Percentage_Shockwave_Desolate_Dive_Damage);
+                    }
+                    else if (self.State.ActiveActionIndex == 2)
+                    {
+                        self.setValue.Value = Mathf.RoundToInt(LS.CustomDesolateDiveDamage * Percentage_Shockwave_Desolate_Dive_Damage * Percentage_DDive_Shaman_Stone_Scaling);
+                    }
+                }
+                else if (self.Fsm.GameObject.transform.parent.gameObject.name == "Q Slam 2")
+                {
+                    if (self.Fsm.GameObject.name == "Hit L")
+                    {
+                        if (self.State.ActiveActionIndex == 0)
+                        {
+                            self.setValue.Value = Mathf.RoundToInt(LS.CustomDescendingDarkDamage * Percentage_Shockwave_1_Descending_Dark_Damage) + 5;
+                        }
+                        else if (self.State.ActiveActionIndex == 2)
+                        {
+                            self.setValue.Value = Mathf.RoundToInt(LS.CustomDescendingDarkDamage * Percentage_Shockwave_1_Descending_Dark_Damage * Percentage_DDark_Shaman_Stone_Scaling) + 5;
+                        }
+                    }
+                    else if (self.Fsm.GameObject.name == "Hit R")
+                    {
+                        if (self.State.ActiveActionIndex == 0)
+                        {
+                            self.setValue.Value = Mathf.RoundToInt(LS.CustomDescendingDarkDamage * Percentage_Shockwave_1_Descending_Dark_Damage);
+                        }
+                        else if (self.State.ActiveActionIndex == 2)
+                        {
+                            self.setValue.Value = Mathf.RoundToInt(LS.CustomDescendingDarkDamage * Percentage_Shockwave_1_Descending_Dark_Damage * Percentage_DDark_Shaman_Stone_Scaling);
+                        }
+                    }
+                }
+                else if (self.Fsm.GameObject.name == "Q Fall Damage")
+                {
+                    if (PlayerData.instance.quakeLevel == 1)
+                    {
+                        if (self.State.ActiveActionIndex == 0)
+                        {
+                            self.setValue.Value = Mathf.RoundToInt(LS.CustomDesolateDiveDamage * Percentage_Dive_Desolate_Dive_Damage);
+                        }
+                        else if (self.State.ActiveActionIndex == 2)
+                        {
+                            self.setValue.Value = Mathf.RoundToInt(LS.CustomDesolateDiveDamage * Percentage_Dive_Desolate_Dive_Damage * Percentage_DDive_Shaman_Stone_Scaling);
+                        }
+                    }
+                    else if (PlayerData.instance.quakeLevel == 2)
+                    {
+                        if (self.State.ActiveActionIndex == 0)
+                        {
+                            self.setValue.Value = Mathf.RoundToInt(LS.CustomDescendingDarkDamage * Percentage_Dive_Descending_Dark_Damage);
+                        }
+                        else if (self.State.ActiveActionIndex == 2)
+                        {
+                            self.setValue.Value = Mathf.RoundToInt(LS.CustomDescendingDarkDamage * Percentage_Dive_Descending_Dark_Damage * Percentage_DDark_Shaman_Stone_Scaling);
+                        }
+                    }
+                }
+            }
+
+            orig(self);
+        }
+
+        private void QMegaDamage(On.HutongGames.PlayMaker.Actions.FloatCompare.orig_OnEnter orig, FloatCompare self)
+        {
+            if (!GS.EnableMod)
+            {
+                orig(self);
+                return;
+            }
+            if (self.Fsm.GameObject.name == "Q Mega" && self.Fsm.Name == "Hit Box Control" && self.State.Name == "Check Scale")
+            {
+                self.Fsm.GameObject.transform.Find("Hit L").gameObject.LocateMyFSM("damages_enemy").GetFsmIntVariable("damageDealt").Value = PlayerDataAccess.equippedCharm_19 ? Mathf.RoundToInt(LS.CustomDescendingDarkDamage * Percentage_Shockwave_2_Descending_Dark_Damage * Percentage_DDark_Shaman_Stone_Scaling) : Mathf.RoundToInt(LS.CustomDescendingDarkDamage * Percentage_Shockwave_2_Descending_Dark_Damage);
+                self.Fsm.GameObject.transform.Find("Hit R").gameObject.LocateMyFSM("damages_enemy").GetFsmIntVariable("damageDealt").Value = PlayerDataAccess.equippedCharm_19 ? Mathf.RoundToInt(LS.CustomDescendingDarkDamage * Percentage_Shockwave_2_Descending_Dark_Damage * Percentage_DDark_Shaman_Stone_Scaling) : Mathf.RoundToInt(LS.CustomDescendingDarkDamage * Percentage_Shockwave_2_Descending_Dark_Damage);
+            }
+
+            orig(self);
+        }
+        #endregion УРОН СПЕЛЛОВ
+
+        #region ОТРИЦАТЕЛЬНОЕ ПОЛУЧЕНИЕ ДУШИ
+        private void NegativeSoulGain(On.HeroController.orig_SoulGain orig, HeroController self)
+        {
+            if (!GS.EnableMod)
+            {
+                orig(self);
+                return;
+            }
+            inoLog.log($"OnSoulGain: {PlayerData.instance.MPCharge}, {PlayerData.instance.MPReserve}", false);
+            if (LS.SoulGain < 0)
+            {
+                HeroController.instance.TakeMP(Mathf.Abs(LS.SoulGain));
+            }
+            orig(self);
+        }
+        #endregion ОТРИЦАТЕЛЬНОЕ ПОЛУЧЕНИЕ ДУШИ
 
         #region ПОЛУЧАЕМОЕ КОЛИЧЕСТВО ДУШИ
         private void CustomSoulGain(ILContext il)
@@ -582,7 +989,7 @@ namespace CustomizableNailDamage
         #endregion ПОЛУЧАЕМОЕ КОЛИЧЕСТВО ДУШИ
 
         #region МЕНЯЮ МНОЖИТЕЛИ УРОНА ГВОЗДЯ У АМУЛЕТОВ, ДАБЫ ОНИ НЕ КОНФЛИКТОВАЛИ С СИСТЕМОЙ
-        private void StrengthDamageIncrease(On.HutongGames.PlayMaker.Actions.FloatMultiply.orig_OnEnter orig, FloatMultiply self)
+        private void SetStrengthDamage(On.HutongGames.PlayMaker.Actions.FloatMultiply.orig_OnEnter orig, FloatMultiply self)
         {
             if (!GS.EnableMod)
             {
@@ -596,13 +1003,14 @@ namespace CustomizableNailDamage
 
             orig(self);
         }
-        private void FotFNailScaling(On.HutongGames.PlayMaker.Actions.SetFsmFloat.orig_OnEnter orig, SetFsmFloat self)
+        private void FuryNailScaling(On.HutongGames.PlayMaker.Actions.SetFsmFloat.orig_OnEnter orig, SetFsmFloat self)
         {
             if (!GS.EnableMod)
             {
                 orig(self);
                 return;
             }
+            inoLog.log($"FuryNailScaling: {self.Fsm.GameObject.name}, {self.Fsm.Name}, {self.State.Name}", false);
             if (self.Fsm.GameObject.name == "Charm Effects" && self.Fsm.Name == "Fury" && self.State.Name == "Activate")
             {
                 self.setValue.Value = 1f;
@@ -610,13 +1018,14 @@ namespace CustomizableNailDamage
 
             orig(self);
         }
-        private void FotFNailArtScaling(On.HutongGames.PlayMaker.Actions.FloatMultiply.orig_OnEnter orig, FloatMultiply self)
+        private void FuryNailArtScaling(On.HutongGames.PlayMaker.Actions.FloatMultiply.orig_OnEnter orig, FloatMultiply self)
         {
             if (!GS.EnableMod)
             {
                 orig(self);
                 return;
             }
+            inoLog.log($"FuryNailArtScaling: {self.Fsm.GameObject.name}, {self.Fsm.Name}, {self.State.Name}", false);
             if (self.Fsm.Name == "nailart_damage" && self.State.Name == "Fury?")
             {
                 self.multiplyBy.Value = 1f;
@@ -716,6 +1125,7 @@ namespace CustomizableNailDamage
                 orig(self);
                 return;
             }
+            inoLog.log($"ThornsOfAgonyDamage: {self.Fsm.GameObject.name}, {self.Fsm.Name}, {self.State.Name}", false);
             if (self.Fsm.GameObject.name.StartsWith("Hit ") && self.Fsm.Name == "set_thorn_damage" && self.State.Name == "Set")
             {
                 if (LS.CustomIntNailDamage < 1 || GS.EnableFloatNailDamage)
@@ -1229,7 +1639,7 @@ namespace CustomizableNailDamage
             {
                 enemyMaxHealth[enemy] = hm.hp;
                 fractionalPool[enemy] = 0f;
-                inoLog.log($"OnEnableEnemy: {enemy.name} with max HP: {hm.hp}", false);
+                inoLog.log($"OnEnableEnemy: {enemy.name} with max HP: {hm.hp}");
             }
 
             return isDead;

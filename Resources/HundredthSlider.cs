@@ -1,6 +1,6 @@
 ﻿using Satchel.BetterMenus;
 
-namespace CustomizableNailDamage
+namespace CustomizableAbilities
 {
     public class HundredthSlider : CustomSlider
     {
