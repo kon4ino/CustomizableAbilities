@@ -1,6 +1,6 @@
-# CustomizableNailDamage — ino_ (kon4ino)
+# CustomizableAbilities — ino_ (kon4ino)
 
-Mod that allows you to change the damage of the nail, including negative and fractional values, and also the amount of soul received from nail hits. Negative nail damage heals enemies.
+Mod that allows you to customize abilities: negative and fractional nail; the amount of SOUL received from nail hits; spells. Negative nail damage heals enemies.
 **This mod provides the following features:**
 ----------
 
@@ -12,17 +12,21 @@ Enable fractional nail damage (e.g., 0.5).
 
 Customize the amount of SOUL gained from nail hits — separately for the main vessel and for reserve vessels.
 
+Customize the SPELLS damage (including flukenest).
+
 
 **Additional settings include:**
 ----------
 
 Toggle the mod on/off.
 
-Enable or disable fractional nail mode.
-
 Enable enemy healing beyond their max HP when using negative nail damage.
 
+Change the settings of the nail and spells (for example, their damage in the input field).
+
 Change keybinds.
+
+Reset nail or spells settings.
 
 Reset all settings to default values.
 
