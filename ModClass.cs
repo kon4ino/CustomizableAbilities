@@ -28,7 +28,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.3.2.0
+/* mod by ino_ (kon4ino), 1.3.3.0
  thank CharmChanger mod for some code */
 
 namespace CustomizableAbilities
@@ -121,7 +121,7 @@ namespace CustomizableAbilities
     {
         #region SHIT HAPPENS
         public CustomizableAbilities() : base("CustomizableAbilities") { }
-        public override string GetVersion() => "1.3.2.0";
+        public override string GetVersion() => "1.3.3.0";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
