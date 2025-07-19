@@ -28,7 +28,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.3.3.0
+/* mod by ino_ (kon4ino), 1.3.3.1
  thank CharmChanger mod for some code */
 
 namespace CustomizableAbilities
@@ -37,7 +37,7 @@ namespace CustomizableAbilities
     #region ЛОГИРОВАНИЕ
     public static class inoLog
     {
-        private static bool enablelog = true;
+        private static bool enablelog = false;
         public static void log<T>(T messagetolog)
         {
             if (enablelog)
@@ -121,7 +121,7 @@ namespace CustomizableAbilities
     {
         #region SHIT HAPPENS
         public CustomizableAbilities() : base("CustomizableAbilities") { }
-        public override string GetVersion() => "1.3.3.0";
+        public override string GetVersion() => "1.3.3.1";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
@@ -1126,6 +1126,16 @@ namespace CustomizableAbilities
             }
 
             SetPool(enemy.gameObject, damageRemainder);
+            if (damageToDeal < 0 && !GS.HealEnemiesOverMaxHP)
+            {
+                if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
+                {
+                    if (enemy.hp - damageToDeal > maxHp)
+                    {
+                        damageToDeal += (enemy.hp - damageToDeal - maxHp);
+                    }
+                }
+            }
             enemy.hp -= damageToDeal;
             if (enemy.hp <= 0)
             {
