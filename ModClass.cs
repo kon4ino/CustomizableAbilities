@@ -28,7 +28,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.3.3.1
+/* mod by ino_ (kon4ino), 1.3.3.2
  thank CharmChanger mod for some code */
 
 namespace CustomizableAbilities
@@ -100,6 +100,7 @@ namespace CustomizableAbilities
         public float CustomFloatNailDamage = 0.1f;
         public float ModifiedNailDamage = 0.0f;
         public float CustomNailCooldown = 0.41f;
+        public bool IgnoreNailBinding = true;
         public int NailUpgrade = 0;
         public int SoulGain = 11;
         public int ReserveSoulGain = 6;
@@ -121,7 +122,7 @@ namespace CustomizableAbilities
     {
         #region SHIT HAPPENS
         public CustomizableAbilities() : base("CustomizableAbilities") { }
-        public override string GetVersion() => "1.3.3.1";
+        public override string GetVersion() => "1.3.3.2";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
@@ -322,7 +323,7 @@ namespace CustomizableAbilities
                 if (!GS.EnableFloatNailDamage)
                     displayText += $"nail damage: {LS.CustomIntNailDamage} ({LS.ModifiedNailDamage})\n";
                 else
-                    displayText += $"nail damage: {LS.CustomFloatNailDamage} ({LS.ModifiedNailDamage})\n";
+                    displayText += $"nail damage: {LS.CustomFloatNailDamage} ({Mathf.RoundToInt(LS.ModifiedNailDamage)})\n";
             }
             if (GS.DisplayNailSoulGain)
             {
@@ -497,6 +498,8 @@ namespace CustomizableAbilities
             switch (typeOfDamage)
             {
                 case "nail":
+                    if (isNailBindingActive() && !LS.IgnoreNailBinding)
+                        modified = 13;
                     if (PlayerData.instance.equippedCharms.Contains(Charm_Strength))
                         modified *= 1.5f;
                     if (PlayerData.instance.equippedCharms.Contains(Charm_Fury) && PlayerData.instance.health <= 1)
@@ -504,12 +507,16 @@ namespace CustomizableAbilities
                     break;
 
                 case "artslash":
+                    if (isNailBindingActive() && !LS.IgnoreNailBinding)
+                        modified = 13;
                     if (PlayerData.instance.equippedCharms.Contains(Charm_Fury) && PlayerData.instance.health <= 1)
                         modified *= 1.75f;
                     modified *= 2.5f;
                     break;
 
                 case "artcyclone":
+                    if (isNailBindingActive() && !LS.IgnoreNailBinding)
+                        modified = 13;
                     if (PlayerData.instance.equippedCharms.Contains(Charm_Fury) && PlayerData.instance.health <= 1)
                         modified *= 1.75f;
                     modified *= 1.25f;
@@ -521,6 +528,8 @@ namespace CustomizableAbilities
                     break;
 
                 case "beam":
+                    if (isNailBindingActive() && !LS.IgnoreNailBinding)
+                        modified = 13;
                     modified *= 0.5f;
                     if (PlayerData.instance.equippedCharms.Contains(Charm_Strength))
                         modified *= 1.5f;
@@ -545,6 +554,13 @@ namespace CustomizableAbilities
             return 1f / cloudDPS;
         }
         #endregion РАССЧЁТ УРОНА
+
+        #region АКТИВНА ЛИ ВЕРИГА ГВОЗДЯ
+        private bool isNailBindingActive()
+        {
+            return BossSequenceController.BoundNail;
+        }
+        #endregion АКТИВНА ЛИ ВЕРИГА ГВОЗДЯ
 
         #region МЕНЮ
         private Menu CreateNailMenu(MenuScreen parentMenu)
@@ -591,6 +607,20 @@ namespace CustomizableAbilities
                         },
 
                         loadSetting: () => GS.DisplayNailCooldown ? 1 : 0
+                    ),
+
+                new HorizontalOption // ВКЛ/ВЫКЛ ИГНОРИРОВАНИЕ ВЕРИГИ НА ГВОЗДЬ
+                    (
+                        name: "Ignore Nail Binding",
+                        description: "Nail damage won't be set to 13 if it's active",
+                        values: new[] { "Off", "On" },
+                        applySetting: index =>
+                        {
+                            LS.IgnoreNailBinding = index == 1;
+                            OnSaveLocal();
+                        },
+
+                        loadSetting: () => LS.IgnoreNailBinding ? 1 : 0
                     ),
 
                     new HorizontalOption // ВКЛ/ВЫКЛ ДРОБНЫЙ УРОН ГВОЗДЯ
@@ -731,6 +761,7 @@ namespace CustomizableAbilities
                                 GS.DisplayNailSoulGain = true;
                                 GS.DisplayNailCooldown = true;
 
+                                LS.IgnoreNailBinding = true;
                                 LS.CustomFloatNailDamage = 0.1f;
                                 LS.CustomNailCooldown = 0.41f;
                                 LS.NailUpgrade = 0;
