@@ -28,7 +28,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.3.3.2
+/* mod by ino_ (kon4ino), 1.3.3.3
  thank CharmChanger mod for some code */
 
 namespace CustomizableAbilities
@@ -66,10 +66,10 @@ namespace CustomizableAbilities
             ToggleFloatMode = CreatePlayerAction("Toggle Float Mode");
             IncreaseNailDamage = CreatePlayerAction("Increase Nail Damage");
             DecreaseNailDamage = CreatePlayerAction("Decrease Nail Damage");
-            IncreaseNailDamage.AddDefaultBinding(Key.U);
-            DecreaseNailDamage.AddDefaultBinding(Key.I);
+            IncreaseNailDamage.AddDefaultBinding(Key.None);
+            DecreaseNailDamage.AddDefaultBinding(Key.None);
             ToggleDisplay = CreatePlayerAction("Toggle Display");
-            ToggleDisplay.AddDefaultBinding(Key.O);
+            ToggleDisplay.AddDefaultBinding(Key.None);
         }
     }
     #endregion БИНДЫ
@@ -100,7 +100,7 @@ namespace CustomizableAbilities
         public float CustomFloatNailDamage = 0.1f;
         public float ModifiedNailDamage = 0.0f;
         public float CustomNailCooldown = 0.41f;
-        public bool IgnoreNailBinding = true;
+        public bool IgnoreNailBinding = false;
         public int NailUpgrade = 0;
         public int SoulGain = 11;
         public int ReserveSoulGain = 6;
@@ -122,7 +122,7 @@ namespace CustomizableAbilities
     {
         #region SHIT HAPPENS
         public CustomizableAbilities() : base("CustomizableAbilities") { }
-        public override string GetVersion() => "1.3.3.2";
+        public override string GetVersion() => "1.3.3.3";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
@@ -323,7 +323,7 @@ namespace CustomizableAbilities
                 if (!GS.EnableFloatNailDamage)
                     displayText += $"nail damage: {LS.CustomIntNailDamage} ({LS.ModifiedNailDamage})\n";
                 else
-                    displayText += $"nail damage: {LS.CustomFloatNailDamage} ({Mathf.RoundToInt(LS.ModifiedNailDamage)})\n";
+                    displayText += $"nail damage: {LS.CustomFloatNailDamage} ({LS.ModifiedNailDamage})\n";
             }
             if (GS.DisplayNailSoulGain)
             {
@@ -498,7 +498,7 @@ namespace CustomizableAbilities
             switch (typeOfDamage)
             {
                 case "nail":
-                    if (isNailBindingActive() && !LS.IgnoreNailBinding)
+                    if (isNailBindingActive() && !LS.IgnoreNailBinding && baseDamage > 13)
                         modified = 13;
                     if (PlayerData.instance.equippedCharms.Contains(Charm_Strength))
                         modified *= 1.5f;
@@ -507,7 +507,7 @@ namespace CustomizableAbilities
                     break;
 
                 case "artslash":
-                    if (isNailBindingActive() && !LS.IgnoreNailBinding)
+                    if (isNailBindingActive() && !LS.IgnoreNailBinding && baseDamage > 13)
                         modified = 13;
                     if (PlayerData.instance.equippedCharms.Contains(Charm_Fury) && PlayerData.instance.health <= 1)
                         modified *= 1.75f;
@@ -515,7 +515,7 @@ namespace CustomizableAbilities
                     break;
 
                 case "artcyclone":
-                    if (isNailBindingActive() && !LS.IgnoreNailBinding)
+                    if (isNailBindingActive() && !LS.IgnoreNailBinding && baseDamage > 13)
                         modified = 13;
                     if (PlayerData.instance.equippedCharms.Contains(Charm_Fury) && PlayerData.instance.health <= 1)
                         modified *= 1.75f;
@@ -528,7 +528,7 @@ namespace CustomizableAbilities
                     break;
 
                 case "beam":
-                    if (isNailBindingActive() && !LS.IgnoreNailBinding)
+                    if (isNailBindingActive() && !LS.IgnoreNailBinding && baseDamage > 13)
                         modified = 13;
                     modified *= 0.5f;
                     if (PlayerData.instance.equippedCharms.Contains(Charm_Strength))
@@ -761,7 +761,7 @@ namespace CustomizableAbilities
                                 GS.DisplayNailSoulGain = true;
                                 GS.DisplayNailCooldown = true;
 
-                                LS.IgnoreNailBinding = true;
+                                LS.IgnoreNailBinding = false;
                                 LS.CustomFloatNailDamage = 0.1f;
                                 LS.CustomNailCooldown = 0.41f;
                                 LS.NailUpgrade = 0;
@@ -1069,9 +1069,9 @@ namespace CustomizableAbilities
                                 GS.keybinds.DecreaseNailDamage.ClearBindings();
                                 GS.keybinds.ToggleDisplay.ClearBindings();
 
-                                GS.keybinds.IncreaseNailDamage.AddDefaultBinding(Key.U);
-                                GS.keybinds.DecreaseNailDamage.AddDefaultBinding(Key.I);
-                                GS.keybinds.ToggleDisplay.AddDefaultBinding(Key.O);
+                                //GS.keybinds.IncreaseNailDamage.AddDefaultBinding(Key.U);
+                                //GS.keybinds.DecreaseNailDamage.AddDefaultBinding(Key.I);
+                                //GS.keybinds.ToggleDisplay.AddDefaultBinding(Key.O);
 
                                 OnSaveGlobal();
                                 OnSaveLocal();
