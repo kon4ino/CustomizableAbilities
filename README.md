@@ -27,6 +27,8 @@ Toggle the mod on/off.
 
 Toggle display on/off.
 
+Toggle ignoring nail binding on/off.
+
 Enable enemy healing beyond their max HP when using negative nail damage.
 
 Change the settings of the nail and spells (for example, their damage in the input field).
