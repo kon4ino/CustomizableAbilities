@@ -28,7 +28,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.3.3.3
+/* mod by ino_ (kon4ino), 1.3.3.4
  thank CharmChanger mod for some code */
 
 namespace CustomizableAbilities
@@ -122,7 +122,7 @@ namespace CustomizableAbilities
     {
         #region SHIT HAPPENS
         public CustomizableAbilities() : base("CustomizableAbilities") { }
-        public override string GetVersion() => "1.3.3.3";
+        public override string GetVersion() => "1.3.3.4";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
@@ -134,6 +134,7 @@ namespace CustomizableAbilities
         private Dictionary<GameObject, float> fractionalPool = new(); // СЛОВАРЬ В КОТОРОМ ХРАНЯТСЯ ОСТАТКИ ДРОБНОГО УРОНА ДЛЯ КАЖДОГО ВРАГА
         private bool isDamageFromThornsOfAgony = false;
         private bool isThornsOfAgonyDamagedOnce = false;
+        private bool isNailDamageChanging = false;
         Vector2 velocity;
         public bool ToggleButtonInsideMenu => true;
 
@@ -199,6 +200,7 @@ namespace CustomizableAbilities
             IL.HeroController.Attack -= CustomNailDuration;
             On.EnemyDreamnailReaction.RecieveDreamImpact -= DreamNailDamage;
             IL.EnemyDreamnailReaction.RecieveDreamImpact -= DreamNailSoulGain;
+            On.PlayMakerFSM.BroadcastEvent_FsmEvent -= OnDebugModNailDamageChanging;
 
             Log("Disabled");
         }
@@ -224,6 +226,7 @@ namespace CustomizableAbilities
             IL.HeroController.Attack += CustomNailDuration;
             On.EnemyDreamnailReaction.RecieveDreamImpact += DreamNailDamage;
             IL.EnemyDreamnailReaction.RecieveDreamImpact += DreamNailSoulGain;
+            On.PlayMakerFSM.BroadcastEvent_FsmEvent += OnDebugModNailDamageChanging;
 
             Log("Enabled");
         }
@@ -268,6 +271,7 @@ namespace CustomizableAbilities
         #region ИЗМЕНЕНИЯ УРОНА ГВОЗДЯ
         private void UpdateNailDamage(int newValue) // ОБНОВЛЕНИЕ УРОНА ГВОЗДЯ
         {
+            isNailDamageChanging = true;
             if (newValue > 0)
             {
                 PlayerData.instance.nailDamage = newValue;
@@ -278,18 +282,22 @@ namespace CustomizableAbilities
             }
             LS.CustomIntNailDamage = newValue;
             PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
+            isNailDamageChanging = false;
         }
         private void IncreaseNailDamage(int newValue) // УВЕЛИЧЕНИЕ УРОНА ГВОЗДЯ
         {
+            isNailDamageChanging = true;
             if (!(LS.CustomIntNailDamage < 1))
             {
                 PlayerData.instance.nailDamage += newValue;
             }
             LS.CustomIntNailDamage += newValue;
             PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
+            isNailDamageChanging = false;
         }
         private void DecreaseNailDamage(int newValue) // УМЕНЬШЕНИЕ УРОНА ГВОЗДЯ
         {
+            isNailDamageChanging = true;
             if (PlayerData.instance.nailDamage - newValue > 0)
             {
                 PlayerData.instance.nailDamage -= newValue;
@@ -300,6 +308,7 @@ namespace CustomizableAbilities
             }
             LS.CustomIntNailDamage -= newValue;
             PlayMakerFSM.BroadcastEvent("UPDATE NAIL DAMAGE");
+            isNailDamageChanging = false;
         }
         #endregion ИЗМЕНЕНИЯ УРОНА ГВОЗДЯ
 
@@ -656,7 +665,9 @@ namespace CustomizableAbilities
                                     vanillaDmg = -1 * (5 * (index-4) - (index-4) + 1);
                                 UpdateNailDamage(vanillaDmg);
                                 LS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedDamage(vanillaDmg, "nail"));
+                                LS.NailUpgrade = index;
                                 OnSaveLocal();
+                                nailMenu?.Update();
                             }
                         },
 
@@ -1114,10 +1125,36 @@ namespace CustomizableAbilities
             IL.HeroController.Attack += CustomNailDuration;
             On.EnemyDreamnailReaction.RecieveDreamImpact += DreamNailDamage;
             IL.EnemyDreamnailReaction.RecieveDreamImpact += DreamNailSoulGain;
+            On.PlayMakerFSM.BroadcastEvent_FsmEvent += OnDebugModNailDamageChanging;
 
             Log("Initialized");
         }
         #endregion ПОДКЛЮЧЕНИЕ ХУКОВ
+
+        private void OnDebugModNailDamageChanging(On.PlayMakerFSM.orig_BroadcastEvent_FsmEvent orig, HutongGames.PlayMaker.FsmEvent fsmEvent)
+        {
+            if (!GS.EnableMod)
+            {
+                orig(fsmEvent);
+                return;
+            }
+            orig(fsmEvent);
+            if (fsmEvent.Name == "UPDATE NAIL DAMAGE" && !isNailDamageChanging)
+            {
+                if (PlayerData.instance.nailDamage != LS.CustomIntNailDamage)
+                {
+                    UpdateNailDamage(PlayerData.instance.nailDamage);
+                    if (GS.EnableFloatNailDamage)
+                    {
+                        LS.ModifiedNailDamage = GetModifiedDamage(PlayerData.instance.nailDamage, "nail");
+                    }
+                }
+                if (PlayerData.instance.nailDamage == 0)
+                {
+                    UpdateNailDamage(1);
+                }
+            }
+        }
 
         #region УРОН И КОЛИЧЕСТВО ПОЛУЧАЕМОЙ ДУШИ С ГВОЗДЯ ГРЁЗ
         private void DreamNailDamage(On.EnemyDreamnailReaction.orig_RecieveDreamImpact orig, EnemyDreamnailReaction self)
