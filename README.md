@@ -1,6 +1,6 @@
 # CustomizableAbilities — ino_ (kon4ino)
 
-Mod that allows you to customize abilities: negative and fractional nail; the amount of SOUL received from nail hits; nail cooldown; damage (also negative and fractional) and the amount of SOUL received from dream nail; spells. Negative damage heals enemies.
+Mod that allows you to customize abilities: negative and fractional nail; the amount of SOUL received from nail hits; nail cooldown; damage (also negative and fractional) and the amount of SOUL received from dream nail; spells and other abilities. Negative damage heals enemies.
 
 
 ----------
@@ -18,6 +18,8 @@ Customize the amount of SOUL gained from nail hits — separately for the main v
 Customize the nail hits cooldown.
 
 Customize the SPELLS damage (including flukenest).
+
+Customize the crystal dash damage.
 
 
 **Additional settings include:**
