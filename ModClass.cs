@@ -28,7 +28,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.3.3.4
+/* mod by ino_ (kon4ino), 1.3.4.0
  thank CharmChanger mod for some code */
 
 namespace CustomizableAbilities
@@ -86,6 +86,7 @@ namespace CustomizableAbilities
         public bool DisplayDreamNailDamage = false;
         public bool DisplayDreamNailSoulGain = false;
         public bool DisplaySpellsDamage = false;
+        public bool DisplaySuperDashDamage = false;
         public bool HealEnemiesOverMaxHP = true;
 
         [JsonConverter(typeof(PlayerActionSetConverter))]
@@ -115,6 +116,7 @@ namespace CustomizableAbilities
         public int CustomAbyssShriekDamage = 80;
         public float CustomDreamNailDamage = 0f;
         public int CustomDreamNailSoulGain = 33;
+        public float CustomSuperDashDamage = 10f;
     }
     #endregion ЛОКАЛЬНЫЕ НАСТРОЙКИ
 
@@ -122,13 +124,14 @@ namespace CustomizableAbilities
     {
         #region SHIT HAPPENS
         public CustomizableAbilities() : base("CustomizableAbilities") { }
-        public override string GetVersion() => "1.3.3.4";
+        public override string GetVersion() => "1.3.4.0";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
         private Menu nailMenu;
         private Menu dreamNailMenu;
         private Menu spellsMenu;
+        private Menu superDashMenu;
         private float damageRemainder = 0f; // ОСТАТОК ДЛЯ ДРОБНОГО ГВОЗДЯ
         private Dictionary<GameObject, int> enemyMaxHealth = new(); // СЛОВАРЬ В КОТОРОМ ХРАНЯТСЯ МАКС. ЗДОРОВЬЕ КАЖДОГО ВРАГА
         private Dictionary<GameObject, float> fractionalPool = new(); // СЛОВАРЬ В КОТОРОМ ХРАНЯТСЯ ОСТАТКИ ДРОБНОГО УРОНА ДЛЯ КАЖДОГО ВРАГА
@@ -181,7 +184,7 @@ namespace CustomizableAbilities
         {
             ModDisplay.Instance?.Destroy();
             ModHooks.BeforeSavegameSaveHook -= OnSaveSaved;
-            ModHooks.AfterSavegameLoadHook += OnSaveLoaded;
+            ModHooks.AfterSavegameLoadHook -= OnSaveLoaded;
             ModHooks.HeroUpdateHook -= OnHeroUpdate;
             ModHooks.OnEnableEnemyHook -= OnEnableEnemy;
             ModHooks.OnReceiveDeathEventHook -= OnReceiveDeathEvent;
@@ -492,6 +495,10 @@ namespace CustomizableAbilities
                 {
                     displayText += "not enable scream\n";
                 }
+            }
+            if (GS.DisplaySuperDashDamage)
+            {
+                displayText += $"crystal dash damage: {LS.CustomSuperDashDamage}\n";
             }
 
             displayText += "[--------------------------]";
@@ -1004,6 +1011,60 @@ namespace CustomizableAbilities
                     )
             });
         }
+        private Menu CreateSuperDashMenu(MenuScreen parentMenu)
+        {
+            return superDashMenu = new Menu("Crystal Dash Settings", new Element[]
+            {
+                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ УРОНА КРИСТАЛЬНОГО РЫВКА
+                    (
+                        name: "Show Crystal Dash Damage",
+                        description: "Toggle display On/Off",
+                        values: new[] { "Off", "On" },
+                        applySetting: index =>
+                        {
+                            GS.DisplaySuperDashDamage = index == 1;
+                            OnSaveGlobal();
+                        },
+
+                        loadSetting: () => GS.DisplaySuperDashDamage ? 1 : 0
+                    ),
+
+                    Blueprints.FloatInputField // УРОН КРИСТАЛЬНОГО РЫВКА
+                    (
+                        "Crystal Dash Damage",
+                        sddamage =>
+                        {
+                            sddamage = Mathf.Clamp(sddamage, -9999f, 9999f);
+
+                            LS.CustomSuperDashDamage = sddamage;
+                            OnSaveLocal();
+                        },
+                        () => LS.CustomSuperDashDamage,
+                        10f,
+                        "DMG",
+                        5
+                    ),
+
+                    new MenuButton
+                    (
+                        name: "Reset Crystal Dash Settings To Defaults",
+                        description: "",
+                        submitAction: (_) =>
+                        {
+                            if (GS.EnableMod)
+                            {
+                                GS.DisplaySuperDashDamage = true;
+
+                                LS.CustomSuperDashDamage = 10f;
+
+                                OnSaveGlobal();
+                                OnSaveLocal();
+                                superDashMenu?.Update();
+                            }
+                        }
+                    )
+            });
+        }
 
         public MenuScreen GetMenuScreen(MenuScreen modListMenu, ModToggleDelegates? toggleDelegates)
         {
@@ -1047,6 +1108,7 @@ namespace CustomizableAbilities
                     Blueprints.NavigateToMenu("Nail Settings", "", () => CreateNailMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
                     Blueprints.NavigateToMenu("Dream Nail Settings", "", () => CreateDreamNailMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
                     Blueprints.NavigateToMenu("Spells Settings", "", () => CreateSpellsMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
+                    Blueprints.NavigateToMenu("Crystal Dash Settings", "", () => CreateSuperDashMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
 
                     new KeyBind
                     (
@@ -1064,6 +1126,20 @@ namespace CustomizableAbilities
                     (
                         name: "Show/Hide Display Key",
                         playerAction: GS.keybinds.ToggleDisplay
+                    ),
+
+                    new HorizontalOption // ВКЛ/ВЫКЛ ДИСПЛЕЙ
+                    (
+                        name: "Show Display",
+                        description: "Toggle display On/Off",
+                        values: new[] { "Off", "On" },
+                        applySetting: index =>
+                        {
+                            GS.EnableDisplay = index == 1;
+                            OnSaveGlobal();
+                        },
+
+                        loadSetting: () => GS.EnableDisplay ? 1 : 0
                     ),
 
                     new MenuButton
@@ -1131,6 +1207,7 @@ namespace CustomizableAbilities
         }
         #endregion ПОДКЛЮЧЕНИЕ ХУКОВ
 
+        #region СОГЛАСОВАНИЕ ИЗМЕНЕНИЯ УРОНА ГВОЗДЯ
         private void OnDebugModNailDamageChanging(On.PlayMakerFSM.orig_BroadcastEvent_FsmEvent orig, HutongGames.PlayMaker.FsmEvent fsmEvent)
         {
             if (!GS.EnableMod)
@@ -1155,6 +1232,7 @@ namespace CustomizableAbilities
                 }
             }
         }
+        #endregion СОГЛАСОВАНИЕ ИЗМЕНЕНИЯ УРОНА ГВОЗДЯ
 
         #region УРОН И КОЛИЧЕСТВО ПОЛУЧАЕМОЙ ДУШИ С ГВОЗДЯ ГРЁЗ
         private void DreamNailDamage(On.EnemyDreamnailReaction.orig_RecieveDreamImpact orig, EnemyDreamnailReaction self)
@@ -1678,8 +1756,8 @@ namespace CustomizableAbilities
             }
 
             string attackerName = hitInstance.Source?.name ?? "";
-            inoLog.log($"OnEnemyDamaged: {attackerName}, {hitInstance.Source}, {hitInstance.SpecialType}", false);
-            inoLog.log($"OnEnemyDamaged, attack type: {hitInstance.AttackType}", false);
+            inoLog.log($"OnEnemyDamaged: {attackerName}, {hitInstance.Source}, {hitInstance.SpecialType}");
+            inoLog.log($"OnEnemyDamaged, attack type: {hitInstance.AttackType}");
 
             if (hitInstance.AttackType == AttackTypes.SharpShadow)
             {
@@ -2109,6 +2187,52 @@ namespace CustomizableAbilities
                         SetPool(enemy.gameObject, damageRemainder);
                         enemy.hp++;
                     }
+                }
+
+                else if (attackerName == "SuperDash Damage")
+                {
+                    var enemy = self.gameObject.GetComponent<HealthManager>();
+                    UpdatePool(enemy.gameObject, LS.CustomSuperDashDamage);
+                    damageRemainder = GetPool(enemy.gameObject);
+                    int damageToDeal = 0;
+
+                    if (LS.CustomSuperDashDamage > 0f)
+                    {
+                        if (damageRemainder >= 1)
+                        {
+                            while (damageRemainder >= 1)
+                            {
+                                damageToDeal++;
+                                damageRemainder--;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (damageRemainder <= -1)
+                        {
+                            while (damageRemainder <= -1)
+                            {
+                                damageToDeal--;
+                                damageRemainder++;
+                            }
+                        }
+                    }
+
+                    SetPool(enemy.gameObject, damageRemainder);
+                    if (damageToDeal < 0 && !GS.HealEnemiesOverMaxHP)
+                    {
+                        if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
+                        {
+                            if (enemy.hp - damageToDeal > maxHp)
+                            {
+                                damageToDeal += (enemy.hp - damageToDeal - maxHp);
+                            }
+                        }
+                    }
+
+                    enemy.hp -= damageToDeal - 1;
+                    hitInstance.DamageDealt = 1;
                 }
             }
 
