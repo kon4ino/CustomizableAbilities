@@ -1,9 +1,9 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
-VisualStudioVersion = 17.14.36310.24 d17.14
+VisualStudioVersion = 17.14.36212.18 d17.14
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CustomizableNailDamage", "CustomizableNailDamage.csproj", "{FBE95E58-8610-4E2A-ADA5-66859E2F1B97}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CustomizableNailDamage", "CustomizableNailDamage.csproj", "{5F00F74E-DF4B-4E4A-A7C5-7489AAFB982E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,15 +11,15 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{FBE95E58-8610-4E2A-ADA5-66859E2F1B97}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{FBE95E58-8610-4E2A-ADA5-66859E2F1B97}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{FBE95E58-8610-4E2A-ADA5-66859E2F1B97}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{FBE95E58-8610-4E2A-ADA5-66859E2F1B97}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F00F74E-DF4B-4E4A-A7C5-7489AAFB982E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F00F74E-DF4B-4E4A-A7C5-7489AAFB982E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F00F74E-DF4B-4E4A-A7C5-7489AAFB982E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F00F74E-DF4B-4E4A-A7C5-7489AAFB982E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
-		SolutionGuid = {4335BB02-BC88-4CEB-B850-DDA8185465A0}
+		SolutionGuid = {49C15C4B-1D28-4771-A5B0-ACE471414C5D}
 	EndGlobalSection
 EndGlobal
