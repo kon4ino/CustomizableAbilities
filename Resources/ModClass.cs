@@ -28,7 +28,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.3.4.1
+/* mod by ino_ (kon4ino), 1.4.0.0
  thank CharmChanger mod for some code */
 
 namespace CustomizableAbilities
@@ -87,6 +87,8 @@ namespace CustomizableAbilities
         public bool DisplayDreamNailSoulGain = false;
         public bool DisplaySpellsDamage = false;
         public bool DisplaySuperDashDamage = false;
+        public bool DisplayFocusCost = false;
+        public bool DisplayFocusTimeMultiplier = false;
         public bool HealEnemiesOverMaxHP = true;
 
         [JsonConverter(typeof(PlayerActionSetConverter))]
@@ -117,6 +119,8 @@ namespace CustomizableAbilities
         public float CustomDreamNailDamage = 0f;
         public int CustomDreamNailSoulGain = 33;
         public float CustomSuperDashDamage = 10f;
+        public int CustomFocusCost = 33;
+        public float CustomFocusTimeMultiplier = 1f;
     }
     #endregion ЛОКАЛЬНЫЕ НАСТРОЙКИ
 
@@ -124,7 +128,7 @@ namespace CustomizableAbilities
     {
         #region SHIT HAPPENS
         public CustomizableAbilities() : base("CustomizableAbilities") { }
-        public override string GetVersion() => "1.3.4.1";
+        public override string GetVersion() => "1.4.0.0";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
@@ -132,6 +136,7 @@ namespace CustomizableAbilities
         private Menu dreamNailMenu;
         private Menu spellsMenu;
         private Menu superDashMenu;
+        private Menu focusMenu;
         private float damageRemainder = 0f; // ОСТАТОК ДЛЯ ДРОБНОГО ГВОЗДЯ
         private Dictionary<GameObject, int> enemyMaxHealth = new(); // СЛОВАРЬ В КОТОРОМ ХРАНЯТСЯ МАКС. ЗДОРОВЬЕ КАЖДОГО ВРАГА
         private Dictionary<GameObject, float> fractionalPool = new(); // СЛОВАРЬ В КОТОРОМ ХРАНЯТСЯ ОСТАТКИ ДРОБНОГО УРОНА ДЛЯ КАЖДОГО ВРАГА
@@ -180,34 +185,10 @@ namespace CustomizableAbilities
         #endregion SHIT HAPPENS
 
         #region ВКЛ/ВЫКЛ МОД
-        public void DisableMod()
-        {
-            ModDisplay.Instance?.Destroy();
-            ModHooks.BeforeSavegameSaveHook -= OnSaveSaved;
-            ModHooks.AfterSavegameLoadHook -= OnSaveLoaded;
-            ModHooks.HeroUpdateHook -= OnHeroUpdate;
-            ModHooks.OnEnableEnemyHook -= OnEnableEnemy;
-            ModHooks.OnReceiveDeathEventHook -= OnReceiveDeathEvent;
-            On.HealthManager.TakeDamage -= OnEnemyDamaged;
-            On.SetHP.OnEnter -= DreamShieldDamage;
-            On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter -= ThornsOfAgonyDamage;
-            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter -= SetStrengthDamage;
-            On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter -= FuryNailScaling;
-            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter -= FuryNailArtScaling;
-            IL.HeroController.SoulGain -= CustomSoulGain;
-            On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter -= SpellsDamage;
-            On.HutongGames.PlayMaker.Actions.FloatCompare.OnEnter -= QMegaDamage;
-            On.SpellFluke.DoDamage -= OnFlukeDamage;
-            On.HutongGames.PlayMaker.Actions.Wait.OnEnter -= FlukenestDefendersCrestDamage;
-            ILHeroController.orig_DoAttack -= CustomNailCooldown;
-            IL.HeroController.Attack -= CustomNailDuration;
-            On.EnemyDreamnailReaction.RecieveDreamImpact -= DreamNailDamage;
-            IL.EnemyDreamnailReaction.RecieveDreamImpact -= DreamNailSoulGain;
-            On.PlayMakerFSM.BroadcastEvent_FsmEvent -= OnDebugModNailDamageChanging;
+        // ФЛАГ: ПОДПИСАНЫ ЛИ СЕЙЧАС ХУКИ (ЗАЩИТА ОТ ДВОЙНОЙ ПОДПИСКИ)
+        private bool hooksSubscribed = false;
 
-            Log("Disabled");
-        }
-        public void EnableMod()
+        private void SubscribeHooks()
         {
             ModHooks.BeforeSavegameSaveHook += OnSaveSaved;
             ModHooks.AfterSavegameLoadHook += OnSaveLoaded;
@@ -230,6 +211,59 @@ namespace CustomizableAbilities
             On.EnemyDreamnailReaction.RecieveDreamImpact += DreamNailDamage;
             IL.EnemyDreamnailReaction.RecieveDreamImpact += DreamNailSoulGain;
             On.PlayMakerFSM.BroadcastEvent_FsmEvent += OnDebugModNailDamageChanging;
+            On.HeroController.StartMPDrain += OnStartMPDrain;
+            On.HeroController.CanFocus += OnCanFocus;
+            ModHooks.GetPlayerIntHook += OnGetPlayerInt;
+            On.HeroController.TakeMP += OnTakeMP;
+            hooksSubscribed = true;
+        }
+
+        private void UnsubscribeHooks()
+        {
+            ModHooks.BeforeSavegameSaveHook -= OnSaveSaved;
+            ModHooks.AfterSavegameLoadHook -= OnSaveLoaded;
+            ModHooks.HeroUpdateHook -= OnHeroUpdate;
+            ModHooks.OnEnableEnemyHook -= OnEnableEnemy;
+            ModHooks.OnReceiveDeathEventHook -= OnReceiveDeathEvent;
+            On.HealthManager.TakeDamage -= OnEnemyDamaged;
+            On.SetHP.OnEnter -= DreamShieldDamage;
+            On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter -= ThornsOfAgonyDamage;
+            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter -= SetStrengthDamage;
+            On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter -= FuryNailScaling;
+            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter -= FuryNailArtScaling;
+            IL.HeroController.SoulGain -= CustomSoulGain;
+            On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter -= SpellsDamage;
+            On.HutongGames.PlayMaker.Actions.FloatCompare.OnEnter -= QMegaDamage;
+            On.SpellFluke.DoDamage -= OnFlukeDamage;
+            On.HutongGames.PlayMaker.Actions.Wait.OnEnter -= FlukenestDefendersCrestDamage;
+            ILHeroController.orig_DoAttack -= CustomNailCooldown;
+            IL.HeroController.Attack -= CustomNailDuration;
+            On.EnemyDreamnailReaction.RecieveDreamImpact -= DreamNailDamage;
+            IL.EnemyDreamnailReaction.RecieveDreamImpact -= DreamNailSoulGain;
+            On.PlayMakerFSM.BroadcastEvent_FsmEvent -= OnDebugModNailDamageChanging;
+            On.HeroController.StartMPDrain -= OnStartMPDrain;
+            On.HeroController.CanFocus -= OnCanFocus;
+            ModHooks.GetPlayerIntHook -= OnGetPlayerInt;
+            On.HeroController.TakeMP -= OnTakeMP;
+            hooksSubscribed = false;
+        }
+
+        public void DisableMod()
+        {
+            ModDisplay.Instance?.Destroy();
+            if (hooksSubscribed)
+                UnsubscribeHooks();
+
+            Log("Disabled");
+        }
+        public void EnableMod()
+        {
+            // ЕСЛИ ХУКИ УЖЕ ВИСЯТ (НАПРИМЕР, МОД БЫЛ ВЫКЛЮЧЕН ПРИ ЗАПУСКЕ ИГРЫ),
+            // СНАЧАЛА СНИМАЕМ ИХ, ЧТОБЫ НЕ ПОДПИСАТЬСЯ ДВАЖДЫ
+            // IL-ХУКИ ПРИ ЭТОМ ПЕРЕПРИМЕНЯЮТСЯ УЖЕ С ВКЛЮЧЁННЫМ МОДОМ
+            if (hooksSubscribed)
+                UnsubscribeHooks();
+            SubscribeHooks();
 
             Log("Enabled");
         }
@@ -254,6 +288,107 @@ namespace CustomizableAbilities
         }
         #endregion СОХРАНЕНИЕ/ЗАГРУЗКА НАСТРОЕК
 
+        #region ИЗМЕНЕНИЯ ФОКУСА
+        private const int Vanilla_Focus_Cost = 33;
+        private bool freeFocusActive = false;
+        private bool paidFocusActive = false;
+
+        private int GetFocusCost() => Mathf.Clamp(LS.CustomFocusCost, 0, 999);
+        private int GetTotalSoul() => PlayerDataAccess.MPCharge + PlayerDataAccess.MPReserve;
+
+        private int OnGetPlayerInt(string name, int orig)
+        {
+            if (name == "focusMP_amount" && GS.EnableMod && GetFocusCost() != Vanilla_Focus_Cost)
+                return Mathf.Min(GetFocusCost(), PlayerDataAccess.MPCharge);
+            return orig;
+        }
+
+        private bool OnCanFocus(On.HeroController.orig_CanFocus orig, HeroController self)
+        {
+            bool canFocus = orig(self);
+            if (!canFocus || !GS.EnableMod || HeroControllerR.drainMP)
+                return canFocus;
+
+            return GetTotalSoul() >= GetFocusCost();
+        }
+
+        private void OnStartMPDrain(On.HeroController.orig_StartMPDrain orig, HeroController self, float time)
+        {
+            if (!GS.EnableMod)
+            {
+                orig(self, time);
+                return;
+            }
+
+            freeFocusActive = false;
+            paidFocusActive = false;
+
+            int cost = GetFocusCost();
+            float multiplier = Mathf.Max(LS.CustomFocusTimeMultiplier, 0.01f);
+
+            if (cost == Vanilla_Focus_Cost && multiplier == 1f)
+            {
+                orig(self, time);
+                return;
+            }
+
+            int drainCost = Mathf.Max(cost, 1);
+
+            float timePerMP = time * Vanilla_Focus_Cost / drainCost * multiplier;
+
+            orig(self, timePerMP);
+            HeroControllerR.focusMP_amount = drainCost;
+
+            if (cost == 0)
+            {
+                freeFocusActive = true;
+            }
+            else if (GetTotalSoul() < cost)
+            {
+                self.StopMPDrain();
+                inoLog.log($"Focus blocked: soul={GetTotalSoul()}, cost={cost}");
+                return;
+            }
+            else
+            {
+                paidFocusActive = true;
+            }
+
+            inoLog.log($"Focus: time={time}, timePerMP={timePerMP}, cost={cost}");
+        }
+
+        private void OnTakeMP(On.HeroController.orig_TakeMP orig, HeroController self, int amount)
+        {
+            if (!GS.EnableMod || !HeroControllerR.drainMP)
+            {
+                orig(self, amount);
+                return;
+            }
+
+            if (freeFocusActive)
+                return;
+
+            if (!paidFocusActive)
+            {
+                orig(self, amount);
+                return;
+            }
+
+            int fromMain = Mathf.Min(amount, PlayerDataAccess.MPCharge);
+            int fromReserve = Mathf.Min(amount - fromMain, PlayerDataAccess.MPReserve);
+
+            if (fromMain > 0)
+                orig(self, fromMain);
+            if (fromReserve > 0)
+                self.TakeReserveMP(fromReserve);
+        }
+
+        private void SettleFreeFocusRefund()
+        {
+            freeFocusActive = false;
+        }
+        #endregion ИЗМЕНЕНИЯ ФОКУСА
+
         #region ИЗМЕНЕНИЯ ПУЛА ДРОБНОГО ГВОЗДЯ
         private float GetPool(GameObject enemyName)
         {
@@ -267,7 +402,8 @@ namespace CustomizableAbilities
         }
         private void UpdatePool(GameObject enemyName, float value)
         {
-            fractionalPool[enemyName] += value;
+            // GetPool ВЕРНЁТ 0, ЕСЛИ ВРАГА ЕЩЁ НЕТ В СЛОВАРЕ
+            fractionalPool[enemyName] = GetPool(enemyName) + value;
         }
         #endregion ИЗМЕНЕНИЯ ПУЛА ДРОБНОГО ГВОЗДЯ
 
@@ -330,6 +466,14 @@ namespace CustomizableAbilities
         {
             string displayText = "CustomizableAbilities:\n[--------------------------]\n";
 
+            if (GS.DisplayFocusCost)
+            {
+                displayText += $"focus cost: {LS.CustomFocusCost}\n";
+            }
+            if (GS.DisplayFocusTimeMultiplier)
+            {
+                displayText += $"focus time: {LS.CustomFocusTimeMultiplier}\n";
+            }
             if (GS.DisplayNailDamage)
             {
                 if (!GS.EnableFloatNailDamage)
@@ -581,7 +725,7 @@ namespace CustomizableAbilities
 
         private float CalculateFlukeDamageInterval(int baseDamage, int customDamage)
         {
-            float scaling = customDamage / baseDamage;
+            float scaling = (float)customDamage / baseDamage;
             int totalFlukeDamage = Mathf.RoundToInt(26 * scaling);
             int cloudDamage = Mathf.Max(totalFlukeDamage - 3, 1);
             float cloudDPS = cloudDamage / 2.3f;
@@ -597,6 +741,88 @@ namespace CustomizableAbilities
         #endregion АКТИВНА ЛИ ВЕРИГА ГВОЗДЯ
 
         #region МЕНЮ
+        private Menu CreateFocusMenu(MenuScreen parentMenu)
+        {
+            return focusMenu = new Menu("Focus Settings", new Element[]
+            {
+                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ СТОИМОСТИ ФОКУСА
+                    (
+                        name: "Show Focus Cost",
+                        description: "Toggle display On/Off",
+                        values: new[] { "Off", "On" },
+                        applySetting: index =>
+                        {
+                            GS.DisplayFocusCost = index == 1;
+                            OnSaveGlobal();
+                        },
+
+                        loadSetting: () => GS.DisplayFocusCost ? 1 : 0
+                    ),
+
+                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ ВРЕМЕНИ ФОКУСА
+                    (
+                        name: "Show Focus Time",
+                        description: "Toggle display On/Off",
+                        values: new[] { "Off", "On" },
+                        applySetting: index =>
+                        {
+                            GS.DisplayFocusTimeMultiplier = index == 1;
+                            OnSaveGlobal();
+                        },
+
+                        loadSetting: () => GS.DisplayFocusTimeMultiplier ? 1 : 0
+                    ),
+
+                Blueprints.IntInputField
+                (
+                    "Focus Cost",
+                    cost =>
+                    {
+                        LS.CustomFocusCost = Mathf.Clamp(cost, 0, 999);
+                        OnSaveLocal();
+                    },
+                    () => LS.CustomFocusCost,
+                    33,
+                    "SOUL",
+                    3
+                ),
+
+                Blueprints.FloatInputField
+                (
+                    "Focus Time Multiplier",
+                    mult =>
+                    {
+                        LS.CustomFocusTimeMultiplier = Mathf.Clamp(mult, 0.01f, 99f);
+                        OnSaveLocal();
+                    },
+                    () => LS.CustomFocusTimeMultiplier,
+                    1f,
+                    "TIME",
+                    4
+                ),
+
+                    new MenuButton
+                    (
+                        name: "Reset Focus Settings To Defaults",
+                        description: "",
+                        submitAction: (_) =>
+                        {
+                            if (GS.EnableMod)
+                            {
+                                GS.DisplayFocusCost = true;
+                                GS.DisplayFocusTimeMultiplier = true;
+
+                                LS.CustomFocusCost = 33;
+                                LS.CustomFocusTimeMultiplier = 1f;
+
+                                OnSaveGlobal();
+                                OnSaveLocal();
+                                focusMenu?.Update();
+                            }
+                        }
+                    )
+            });
+        }
         private Menu CreateNailMenu(MenuScreen parentMenu)
         {
             return nailMenu = new Menu("Nail Settings", new Element[]
@@ -1123,6 +1349,7 @@ namespace CustomizableAbilities
                         loadSetting: () => GS.HealEnemiesOverMaxHP ? 1 : 0
                     ),
 
+                    Blueprints.NavigateToMenu("Focus Settings", "", () => CreateFocusMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
                     Blueprints.NavigateToMenu("Nail Settings", "", () => CreateNailMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
                     Blueprints.NavigateToMenu("Dream Nail Settings", "", () => CreateDreamNailMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
                     Blueprints.NavigateToMenu("Spells Settings", "", () => CreateSpellsMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
@@ -1195,33 +1422,13 @@ namespace CustomizableAbilities
         #region ПОДКЛЮЧЕНИЕ ХУКОВ
         public override void Initialize(Dictionary<string, Dictionary<string, GameObject>> preloadedObjects)
         {
-            Log("Initializing");
+            Log("Initializing...");
 
             base.Initialize(preloadedObjects);
-            ModHooks.BeforeSavegameSaveHook += OnSaveSaved;
-            ModHooks.AfterSavegameLoadHook += OnSaveLoaded;
-            ModHooks.HeroUpdateHook += OnHeroUpdate;
-            ModHooks.OnEnableEnemyHook += OnEnableEnemy;
-            ModHooks.OnReceiveDeathEventHook += OnReceiveDeathEvent;
-            On.HealthManager.TakeDamage += OnEnemyDamaged;
-            On.SetHP.OnEnter += DreamShieldDamage;
-            On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter += ThornsOfAgonyDamage;
-            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += SetStrengthDamage;
-            On.HutongGames.PlayMaker.Actions.SetFsmFloat.OnEnter += FuryNailScaling;
-            On.HutongGames.PlayMaker.Actions.FloatMultiply.OnEnter += FuryNailArtScaling;
+            SubscribeHooks();
             UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChanged;
-            IL.HeroController.SoulGain += CustomSoulGain;
-            On.HutongGames.PlayMaker.Actions.SetFsmInt.OnEnter += SpellsDamage;
-            On.HutongGames.PlayMaker.Actions.FloatCompare.OnEnter += QMegaDamage;
-            On.SpellFluke.DoDamage += OnFlukeDamage;
-            On.HutongGames.PlayMaker.Actions.Wait.OnEnter += FlukenestDefendersCrestDamage;
-            ILHeroController.orig_DoAttack += CustomNailCooldown;
-            IL.HeroController.Attack += CustomNailDuration;
-            On.EnemyDreamnailReaction.RecieveDreamImpact += DreamNailDamage;
-            IL.EnemyDreamnailReaction.RecieveDreamImpact += DreamNailSoulGain;
-            On.PlayMakerFSM.BroadcastEvent_FsmEvent += OnDebugModNailDamageChanging;
 
-            Log("Initialized");
+            Log("Initialized.");
         }
         #endregion ПОДКЛЮЧЕНИЕ ХУКОВ
 
@@ -1262,44 +1469,7 @@ namespace CustomizableAbilities
             }
 
             var enemy = self.gameObject.GetComponent<HealthManager>();
-            UpdatePool(enemy.gameObject, LS.CustomDreamNailDamage);
-            damageRemainder = GetPool(enemy.gameObject);
-            int damageToDeal = 0;
-
-            if (LS.CustomDreamNailDamage > 0f)
-            {
-                if (damageRemainder >= 1)
-                {
-                    while (damageRemainder >= 1)
-                    {
-                        damageToDeal++;
-                        damageRemainder--;
-                    }
-                }
-            }
-            else
-            {
-                if (damageRemainder <= -1)
-                {
-                    while (damageRemainder <= -1)
-                    {
-                        damageToDeal--;
-                        damageRemainder++;
-                    }
-                }
-            }
-
-            SetPool(enemy.gameObject, damageRemainder);
-            if (damageToDeal < 0 && !GS.HealEnemiesOverMaxHP)
-            {
-                if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
-                {
-                    if (enemy.hp - damageToDeal > maxHp)
-                    {
-                        damageToDeal += (enemy.hp - damageToDeal - maxHp);
-                    }
-                }
-            }
+            int damageToDeal = TakeSignedWholeDamage(enemy, LS.CustomDreamNailDamage);
             enemy.hp -= damageToDeal;
             if (enemy.hp <= 0)
             {
@@ -1314,11 +1484,19 @@ namespace CustomizableAbilities
             if (!GS.EnableMod) return;
             ILCursor cursor = new ILCursor(il).Goto(0);
 
-            cursor.TryGotoNext(i => i.MatchLdcI4(33));
+            if (!cursor.TryGotoNext(i => i.MatchLdcI4(33)))
+            {
+                LogError("DreamNailSoulGain: pattern (33) not found, patch skipped");
+                return;
+            }
             cursor.GotoNext();
             cursor.EmitDelegate<Func<int, int>>(soul => LS.CustomDreamNailSoulGain);
 
-            cursor.TryGotoNext(i => i.MatchLdcI4(66));
+            if (!cursor.TryGotoNext(i => i.MatchLdcI4(66)))
+            {
+                LogError("DreamNailSoulGain: pattern (66) not found, patch skipped");
+                return;
+            }
             cursor.GotoNext();
             cursor.EmitDelegate<Func<int, int>>(soul => Mathf.RoundToInt(LS.CustomDreamNailSoulGain * Percentage_Dream_Wielder_Soul_Gain_Scaling));
         }
@@ -1329,11 +1507,19 @@ namespace CustomizableAbilities
         {
             if (!GS.EnableMod) return;
             ILCursor cursor = new ILCursor(il).Goto(0);
-            cursor.TryGotoNext(i => i.MatchLdfld<HeroController>("ATTACK_COOLDOWN_TIME_CH"));
+            if (!cursor.TryGotoNext(i => i.MatchLdfld<HeroController>("ATTACK_COOLDOWN_TIME_CH")))
+            {
+                LogError("CustomNailCooldown: pattern (ATTACK_COOLDOWN_TIME_CH) not found, patch skipped");
+                return;
+            }
             cursor.GotoNext();
             cursor.EmitDelegate<Func<float, float>>(time => LS.CustomNailCooldown * Percentage_Quick_Slash_Nail_Cooldown_Scaling);
 
-            cursor.TryGotoNext(i => i.MatchLdfld<HeroController>("ATTACK_COOLDOWN_TIME"));
+            if (!cursor.TryGotoNext(i => i.MatchLdfld<HeroController>("ATTACK_COOLDOWN_TIME")))
+            {
+                LogError("CustomNailCooldown: pattern (ATTACK_COOLDOWN_TIME) not found, patch skipped");
+                return;
+            }
             cursor.GotoNext();
             cursor.EmitDelegate<Func<float, float>>(time => LS.CustomNailCooldown);
         }
@@ -1342,11 +1528,19 @@ namespace CustomizableAbilities
         {
             if (!GS.EnableMod) return;
             ILCursor cursor = new ILCursor(il).Goto(0);
-            cursor.TryGotoNext(i => i.MatchLdfld<HeroController>("ATTACK_DURATION_CH"));
+            if (!cursor.TryGotoNext(i => i.MatchLdfld<HeroController>("ATTACK_DURATION_CH")))
+            {
+                LogError("CustomNailDuration: pattern (ATTACK_DURATION_CH) not found, patch skipped");
+                return;
+            }
             cursor.GotoNext();
             cursor.EmitDelegate<Func<float, float>>(time => LS.CustomNailCooldown * Percentage_Quick_Slash_Nail_Cooldown_Scaling);
 
-            cursor.TryGotoNext(i => i.MatchLdfld<HeroController>("ATTACK_DURATION"));
+            if (!cursor.TryGotoNext(i => i.MatchLdfld<HeroController>("ATTACK_DURATION")))
+            {
+                LogError("CustomNailDuration: pattern (ATTACK_DURATION) not found, patch skipped");
+                return;
+            }
             cursor.GotoNext();
             cursor.EmitDelegate<Func<float, float>>(time => LS.CustomNailCooldown);
         }
@@ -1577,13 +1771,22 @@ namespace CustomizableAbilities
             if (!GS.EnableMod) return;
             ILCursor cursor = new ILCursor(il).Goto(0);
 
-            cursor.TryGotoNext(i => i.MatchLdcI4(11));
+            if (!cursor.TryGotoNext(i => i.MatchLdcI4(11)))
+            {
+                LogError("CustomSoulGain: pattern (11) not found, patch skipped");
+                return;
+            }
             cursor.GotoNext();
             cursor.EmitDelegate<Func<int, int>>(soul => LS.SoulGain < 0 ? 0 : LS.SoulGain);
 
-            cursor.TryGotoNext(i => i.MatchLdcI4(6));
+            if (!cursor.TryGotoNext(i => i.MatchLdcI4(6)))
+            {
+                LogError("CustomSoulGain: pattern (6) not found, reserve soul patch skipped");
+                return;
+            }
             cursor.GotoNext();
-            cursor.EmitDelegate<Func<int, int>>(soul => LS.SoulGain < 0 ? 0 : LS.SoulGain);
+            // ДУША, КОГДА ОСНОВНОЙ СОСУД ПОЛОН (ИДЁТ В РЕЗЕРВНЫЕ СОСУДЫ)
+            cursor.EmitDelegate<Func<int, int>>(soul => LS.ReserveSoulGain < 0 ? 0 : LS.ReserveSoulGain);
         }
         #endregion ПОЛУЧАЕМОЕ КОЛИЧЕСТВО ДУШИ
 
@@ -1672,10 +1875,7 @@ namespace CustomizableAbilities
                                 int healable = Mathf.Max(0, maxHp - hm.hp);
                                 int appliedHeal = Mathf.Min(totalHeal, healable);
 
-                                if (appliedHeal == 0)
-                                {
-                                }
-                                else
+                                if (appliedHeal != 0)
                                 {
                                     self.hp.Value += appliedHeal + 1;
                                 }
@@ -1777,478 +1977,46 @@ namespace CustomizableAbilities
             inoLog.log($"OnEnemyDamaged: {attackerName}, {hitInstance.Source}, {hitInstance.SpecialType}");
             inoLog.log($"OnEnemyDamaged, attack type: {hitInstance.AttackType}");
 
+            var enemy = self.gameObject.GetComponent<HealthManager>();
+
             if (hitInstance.AttackType == AttackTypes.SharpShadow)
             {
-                var enemy = self.gameObject.GetComponent<HealthManager>();
-                hitInstance.DamageDealt = 1;
-
-                if (!GS.EnableFloatNailDamage) // УРОН +/- ТЕНИ
-                {
-                    int dashDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "sharpshadow"));
-                    if (LS.CustomIntNailDamage <= 0)
-                    {
-                        if (GS.HealEnemiesOverMaxHP)
-                        {
-                            enemy.hp += Mathf.Abs(dashDamage);
-                        }
-
-                        else
-                        {
-                            if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
-                            {
-                                int totalHeal = Mathf.Abs(dashDamage);
-                                int healable = Mathf.Max(0, maxHp - enemy.hp);
-                                int appliedHeal = Mathf.Min(totalHeal, healable);
-
-                                if (appliedHeal == 0)
-                                {
-                                }
-                                else
-                                {
-                                    enemy.hp += appliedHeal;
-                                }
-                            }
-                        }
-                        enemy.hp++;
-                    }
-
-                    else
-                    {
-                        hitInstance.DamageDealt = dashDamage;
-                    }
-                }
-
-                else // УРОН ДРОБНОЙ ТЕНИ
-                {
-                    float dashDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "sharpshadow");
-                    UpdatePool(enemy.gameObject, dashDamage);
-                    damageRemainder = GetPool(enemy.gameObject);
-                    int damageToDeal = 0;
-
-                    if (damageRemainder >= 1)
-                    {
-                        while (damageRemainder >= 1)
-                        {
-                            damageToDeal++;
-                            damageRemainder--;
-                        }
-                        hitInstance.DamageDealt += damageToDeal;
-                    }
-
-                    SetPool(enemy.gameObject, damageRemainder);
-                    enemy.hp++;
-                }
+                ApplyNailDamage(enemy, ref hitInstance, "sharpshadow");
             }
 
             else if (hitInstance.AttackType == AttackTypes.NailBeam)
             {
-                var enemy = self.gameObject.GetComponent<HealthManager>();
-                hitInstance.DamageDealt = 1;
-
-                if (!GS.EnableFloatNailDamage) // УРОН ВОЛН ЭЛЕГИИ КУКОЛКИ
-                {
-                    int nailBeamDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "beam"));
-                    if (LS.CustomIntNailDamage <= 0)
-                    {
-                        if (GS.HealEnemiesOverMaxHP)
-                        {
-                            enemy.hp += Mathf.Abs(nailBeamDamage);
-                        }
-
-                        else
-                        {
-                            if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
-                            {
-                                int totalHeal = Mathf.Abs(nailBeamDamage);
-                                int healable = Mathf.Max(0, maxHp - enemy.hp);
-                                int appliedHeal = Mathf.Min(totalHeal, healable);
-
-                                if (appliedHeal == 0)
-                                {
-                                }
-                                else
-                                {
-                                    enemy.hp += appliedHeal;
-                                }
-                            }
-                        }
-                        enemy.hp++;
-                    }
-
-                    else
-                    {
-                        hitInstance.DamageDealt = nailBeamDamage;
-                    }
-                }
-
-                else // УРОН ДРОБНОЙ ВОЛНЫ ЭЛЕГИИ КУКОЛКИ
-                {
-                    float nailBeamDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "beam");
-                    UpdatePool(enemy.gameObject, nailBeamDamage);
-                    damageRemainder = GetPool(enemy.gameObject);
-                    int damageToDeal = 0;
-
-                    if (damageRemainder >= 1)
-                    {
-                        while (damageRemainder >= 1)
-                        {
-                            damageToDeal++;
-                            damageRemainder--;
-                        }
-                        hitInstance.DamageDealt += damageToDeal;
-                    }
-
-                    SetPool(enemy.gameObject, damageRemainder);
-                    enemy.hp++;
-                }
+                ApplyNailDamage(enemy, ref hitInstance, "beam");
             }
 
             else if (hitInstance.AttackType == AttackTypes.Nail)
             {
                 if (attackerName == "Great Slash" || attackerName == "Dash Slash")
-                {
-                    var enemy = self.gameObject.GetComponent<HealthManager>();
-
-                    if (!GS.EnableFloatNailDamage)
-                    {
-                        int nailArtDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "artslash"));
-                        if (LS.CustomIntNailDamage <= 0)
-                        {
-                            hitInstance.DamageDealt = 1;
-                            if (GS.HealEnemiesOverMaxHP)
-                            {
-                                enemy.hp += Mathf.Abs(nailArtDamage);
-                            }
-
-                            else
-                            {
-                                if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
-                                {
-                                    int totalHeal = Mathf.Abs(nailArtDamage);
-                                    int healable = Mathf.Max(0, maxHp - enemy.hp);
-                                    int appliedHeal = Mathf.Min(totalHeal, healable);
-
-                                    if (appliedHeal == 0)
-                                    {
-                                    }
-                                    else
-                                    {
-                                        enemy.hp += appliedHeal;
-                                    }
-                                }
-                            }
-                            enemy.hp++;
-                        }
-
-                        else
-                        {
-                            hitInstance.DamageDealt = nailArtDamage;
-                        }
-                    }
-
-                    else
-                    {
-                        hitInstance.DamageDealt = 1;
-                        float nailArtDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "artslash");
-                        UpdatePool(enemy.gameObject, nailArtDamage);
-                        damageRemainder = GetPool(enemy.gameObject);
-                        int damageToDeal = 0;
-
-                        if (damageRemainder >= 1)
-                        {
-                            while (damageRemainder >= 1)
-                            {
-                                damageToDeal++;
-                                damageRemainder--;
-                            }
-                            hitInstance.DamageDealt += damageToDeal;
-                        }
-
-                        SetPool(enemy.gameObject, damageRemainder);
-                        enemy.hp++;
-                    }
-                }
-
+                    ApplyNailDamage(enemy, ref hitInstance, "artslash");
                 else if (attackerName == "Hit L" || attackerName == "Hit R")
-                {
-                    var enemy = self.gameObject.GetComponent<HealthManager>();
-
-                    if (!GS.EnableFloatNailDamage)
-                    {
-                        int nailArtDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "artcyclone"));
-                        if (LS.CustomIntNailDamage <= 0)
-                        {
-                            hitInstance.DamageDealt = 1;
-                            if (GS.HealEnemiesOverMaxHP)
-                            {
-                                enemy.hp += Mathf.Abs(nailArtDamage);
-                            }
-
-                            else
-                            {
-                                if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
-                                {
-                                    int totalHeal = Mathf.Abs(nailArtDamage);
-                                    int healable = Mathf.Max(0, maxHp - enemy.hp);
-                                    int appliedHeal = Mathf.Min(totalHeal, healable);
-
-                                    if (appliedHeal == 0)
-                                    {
-                                    }
-                                    else
-                                    {
-                                        enemy.hp += appliedHeal;
-                                    }
-                                }
-                            }
-                            enemy.hp++;
-                        }
-
-                        else
-                        {
-                            hitInstance.DamageDealt = nailArtDamage;
-                        }
-                    }
-
-                    else
-                    {
-                        hitInstance.DamageDealt = 1;
-                        float nailArtDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "artcyclone");
-                        UpdatePool(enemy.gameObject, nailArtDamage);
-                        damageRemainder = GetPool(enemy.gameObject);
-                        int damageToDeal = 0;
-
-                        if (damageRemainder >= 1)
-                        {
-                            while (damageRemainder >= 1)
-                            {
-                                damageToDeal++;
-                                damageRemainder--;
-                            }
-                            hitInstance.DamageDealt += damageToDeal;
-                        }
-
-                        SetPool(enemy.gameObject, damageRemainder);
-                        enemy.hp++;
-                    }
-                }
-
+                    ApplyNailDamage(enemy, ref hitInstance, "artcyclone");
                 else
-                {
-                    var enemy = self.gameObject.GetComponent<HealthManager>();
-
-                    if (!GS.EnableFloatNailDamage)
-                    {
-                        int nailDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "nail"));
-                        if (LS.CustomIntNailDamage <= 0)
-                        {
-                            hitInstance.DamageDealt = 1;
-                            if (GS.HealEnemiesOverMaxHP)
-                            {
-                                enemy.hp += Mathf.Abs(nailDamage);
-                            }
-
-                            else
-                            {
-                                if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
-                                {
-                                    int totalHeal = Mathf.Abs(nailDamage);
-                                    int healable = Mathf.Max(0, maxHp - enemy.hp);
-                                    int appliedHeal = Mathf.Min(totalHeal, healable);
-
-                                    if (appliedHeal == 0)
-                                    {
-                                    }
-                                    else
-                                    {
-                                        enemy.hp += appliedHeal;
-                                    }
-                                }
-                            }
-                            enemy.hp++;
-                        }
-
-                        else
-                        {
-                            hitInstance.DamageDealt = nailDamage;
-                        }
-                    }
-
-                    else
-                    {
-                        hitInstance.DamageDealt = 1;
-                        float nailDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "nail");
-                        UpdatePool(enemy.gameObject, nailDamage);
-                        damageRemainder = GetPool(enemy.gameObject);
-                        int damageToDeal = 0;
-
-                        if (damageRemainder >= 1)
-                        {
-                            while (damageRemainder >= 1)
-                            {
-                                damageToDeal++;
-                                damageRemainder--;
-                            }
-                            hitInstance.DamageDealt += damageToDeal;
-                        }
-
-                        SetPool(enemy.gameObject, damageRemainder);
-                        enemy.hp++;
-                    }
-                }
+                    ApplyNailDamage(enemy, ref hitInstance, "nail");
             }
 
             else
             {
-                if (isThornsOfAgonyDamagedOnce)
+                if (isThornsOfAgonyDamagedOnce) // ВТОРОЙ УДАР КОЛЮЧЕК СТРАДАНИЙ
                 {
-                    var enemy = self.gameObject.GetComponent<HealthManager>();
                     isThornsOfAgonyDamagedOnce = false;
-
-                    if (!GS.EnableFloatNailDamage)
-                    {
-                        if (GS.HealEnemiesOverMaxHP)
-                        {
-                            enemy.hp += Mathf.Abs(LS.CustomIntNailDamage);
-                        }
-
-                        else
-                        {
-                            if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
-                            {
-                                int totalHeal = Mathf.Abs(LS.CustomIntNailDamage);
-                                int healable = Mathf.Max(0, maxHp - enemy.hp);
-                                int appliedHeal = Mathf.Min(totalHeal, healable);
-
-                                if (appliedHeal == 0)
-                                {
-                                }
-                                else
-                                {
-                                    enemy.hp += appliedHeal;
-                                }
-                            }
-                        }
-                        enemy.hp++;
-                    }
-
-                    else
-                    {
-                        UpdatePool(enemy.gameObject, LS.CustomFloatNailDamage);
-                        damageRemainder = GetPool(enemy.gameObject);
-                        int damageToDeal = 0;
-
-                        if (damageRemainder >= 1)
-                        {
-                            while (damageRemainder >= 1)
-                            {
-                                damageToDeal++;
-                                damageRemainder--;
-                            }
-                            hitInstance.DamageDealt += damageToDeal;
-                        }
-
-                        SetPool(enemy.gameObject, damageRemainder);
-                        enemy.hp++;
-                    }
+                    ApplyThornsOfAgonyDamage(enemy, ref hitInstance);
                 }
 
-                else if (isDamageFromThornsOfAgony)
+                else if (isDamageFromThornsOfAgony) // ПЕРВЫЙ УДАР КОЛЮЧЕК СТРАДАНИЙ
                 {
-                    var enemy = self.gameObject.GetComponent<HealthManager>();
                     isDamageFromThornsOfAgony = false;
                     isThornsOfAgonyDamagedOnce = true;
-
-                    if (!GS.EnableFloatNailDamage)
-                    {
-                        if (GS.HealEnemiesOverMaxHP)
-                        {
-                            enemy.hp += Mathf.Abs(LS.CustomIntNailDamage);
-                        }
-
-                        else
-                        {
-                            if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
-                            {
-                                int totalHeal = Mathf.Abs(LS.CustomIntNailDamage);
-                                int healable = Mathf.Max(0, maxHp - enemy.hp);
-                                int appliedHeal = Mathf.Min(totalHeal, healable);
-
-                                if (appliedHeal == 0)
-                                {
-                                }
-                                else
-                                {
-                                    enemy.hp += appliedHeal;
-                                }
-                            }
-                        }
-                        enemy.hp++;
-                    }
-
-                    else
-                    {
-                        UpdatePool(enemy.gameObject, LS.CustomFloatNailDamage);
-                        damageRemainder = GetPool(enemy.gameObject);
-                        int damageToDeal = 0;
-
-                        if (damageRemainder >= 1)
-                        {
-                            while (damageRemainder >= 1)
-                            {
-                                damageToDeal++;
-                                damageRemainder--;
-                            }
-                            hitInstance.DamageDealt += damageToDeal;
-                        }
-
-                        SetPool(enemy.gameObject, damageRemainder);
-                        enemy.hp++;
-                    }
+                    ApplyThornsOfAgonyDamage(enemy, ref hitInstance);
                 }
 
-                else if (attackerName == "SuperDash Damage")
+                else if (attackerName == "SuperDash Damage") 
                 {
-                    var enemy = self.gameObject.GetComponent<HealthManager>();
-                    UpdatePool(enemy.gameObject, LS.CustomSuperDashDamage);
-                    damageRemainder = GetPool(enemy.gameObject);
-                    int damageToDeal = 0;
-
-                    if (LS.CustomSuperDashDamage > 0f)
-                    {
-                        if (damageRemainder >= 1)
-                        {
-                            while (damageRemainder >= 1)
-                            {
-                                damageToDeal++;
-                                damageRemainder--;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        if (damageRemainder <= -1)
-                        {
-                            while (damageRemainder <= -1)
-                            {
-                                damageToDeal--;
-                                damageRemainder++;
-                            }
-                        }
-                    }
-
-                    SetPool(enemy.gameObject, damageRemainder);
-                    if (damageToDeal < 0 && !GS.HealEnemiesOverMaxHP)
-                    {
-                        if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
-                        {
-                            if (enemy.hp - damageToDeal > maxHp)
-                            {
-                                damageToDeal += (enemy.hp - damageToDeal - maxHp);
-                            }
-                        }
-                    }
-
+                    int damageToDeal = TakeSignedWholeDamage(enemy, LS.CustomSuperDashDamage);
                     enemy.hp -= damageToDeal - 1;
                     hitInstance.DamageDealt = 1;
                 }
@@ -2256,6 +2024,111 @@ namespace CustomizableAbilities
 
             inoLog.log($"OnEnemyDamaged, damage: {hitInstance.DamageDealt}");
             orig(self, hitInstance);
+        }
+
+        // УРОН ГВОЗДЯ (ОБЫЧНЫЙ УДАР, ТЕХНИКИ, ЭЛЕГИЯ, ТЕНЕВОЙ РЫВОК)
+        private void ApplyNailDamage(HealthManager enemy, ref HitInstance hitInstance, string typeOfDamage)
+        {
+            hitInstance.DamageDealt = 1;
+
+            if (!GS.EnableFloatNailDamage)
+            {
+                int damage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, typeOfDamage));
+                if (LS.CustomIntNailDamage <= 0)
+                    HealEnemy(enemy, damage);
+                else
+                    hitInstance.DamageDealt = damage;
+            }
+            else
+            {
+                AddFractionalDamage(enemy, ref hitInstance, GetModifiedDamage(LS.CustomFloatNailDamage, typeOfDamage));
+            }
+        }
+
+        // УРОН КОЛЮЧЕК СТРАДАНИЙ. СЮДА ПОПАДАЕМ ТОЛЬКО ПРИ УРОНЕ < 1 ИЛИ В ДРОБНОМ РЕЖИМЕ:
+        // В ЭТИХ СЛУЧАЯХ FSM КОЛЮЧЕК УЖЕ ВЫСТАВИЛ УРОН УДАРА 1
+        private void ApplyThornsOfAgonyDamage(HealthManager enemy, ref HitInstance hitInstance)
+        {
+            if (!GS.EnableFloatNailDamage)
+                HealEnemy(enemy, LS.CustomIntNailDamage);
+            else
+                AddFractionalDamage(enemy, ref hitInstance, LS.CustomFloatNailDamage);
+        }
+
+        // ОТРИЦАТЕЛЬНЫЙ УРОН: ЛЕЧИМ ВРАГА (С УЧЁТОМ НАСТРОЙКИ ЛЕЧЕНИЯ СВЕРХ МАКС. ХП)
+        // И ВОЗВРАЩАЕМ 1 ХП, КОТОРЫЙ СНИМЕТ САМ УДАР
+        private void HealEnemy(HealthManager enemy, int damage)
+        {
+            int totalHeal = Mathf.Abs(damage);
+
+            if (GS.HealEnemiesOverMaxHP)
+            {
+                enemy.hp += totalHeal;
+            }
+            else if (enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
+            {
+                int healable = Mathf.Max(0, maxHp - enemy.hp);
+                int appliedHeal = Mathf.Min(totalHeal, healable);
+                if (appliedHeal != 0)
+                    enemy.hp += appliedHeal;
+            }
+
+            enemy.hp++;
+        }
+
+        // ДРОБНЫЙ УРОН: КОПИМ В ПУЛЕ ВРАГА, ЦЕЛУЮ ЧАСТЬ ДОБАВЛЯЕМ К УДАРУ,
+        // И ВОЗВРАЩАЕМ 1 ХП, КОТОРЫЙ СНИМЕТ САМ УДАР
+        private void AddFractionalDamage(HealthManager enemy, ref HitInstance hitInstance, float damage)
+        {
+            UpdatePool(enemy.gameObject, damage);
+            damageRemainder = GetPool(enemy.gameObject);
+            int damageToDeal = 0;
+
+            while (damageRemainder >= 1)
+            {
+                damageToDeal++;
+                damageRemainder--;
+            }
+
+            hitInstance.DamageDealt += damageToDeal;
+            SetPool(enemy.gameObject, damageRemainder);
+            enemy.hp++;
+        }
+
+        // ДРОБНЫЙ УРОН СО ЗНАКОМ (ГВОЗДЬ ГРЁЗ, КРИСТАЛЬНЫЙ РЫВОК): КОПИМ В ПУЛЕ ВРАГА
+        // И ВОЗВРАЩАЕМ ЦЕЛУЮ ЧАСТЬ. ОТРИЦАТЕЛЬНОЕ ЗНАЧЕНИЕ — ЛЕЧЕНИЕ; ЕСЛИ ЛЕЧИТЬ СВЕРХ
+        // МАКС. ХП НЕЛЬЗЯ, ЛЕЧЕНИЕ УРЕЗАЕТСЯ ДО МАКСИМУМА
+        private int TakeSignedWholeDamage(HealthManager enemy, float damage)
+        {
+            UpdatePool(enemy.gameObject, damage);
+            damageRemainder = GetPool(enemy.gameObject);
+            int damageToDeal = 0;
+
+            if (damage > 0f)
+            {
+                while (damageRemainder >= 1)
+                {
+                    damageToDeal++;
+                    damageRemainder--;
+                }
+            }
+            else
+            {
+                while (damageRemainder <= -1)
+                {
+                    damageToDeal--;
+                    damageRemainder++;
+                }
+            }
+
+            SetPool(enemy.gameObject, damageRemainder);
+            if (damageToDeal < 0 && !GS.HealEnemiesOverMaxHP && enemyMaxHealth.TryGetValue(enemy.gameObject, out int maxHp))
+            {
+                if (enemy.hp - damageToDeal > maxHp)
+                    damageToDeal += (enemy.hp - damageToDeal - maxHp);
+            }
+
+            return damageToDeal;
         }
         #endregion ПРИ НАНЕСЕНИИ УРОНА ВРАГУ
 
