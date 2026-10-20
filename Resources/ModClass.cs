@@ -28,7 +28,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 //using UObject = UnityEngine.Object;
 
-/* mod by ino_ (kon4ino), 1.4.0.0
+/* mod by ino_ (kon4ino), 1.5.0.0
  thank CharmChanger mod for some code */
 
 namespace CustomizableAbilities
@@ -60,6 +60,7 @@ namespace CustomizableAbilities
         public PlayerAction IncreaseNailDamage;
         public PlayerAction DecreaseNailDamage;
         public PlayerAction ToggleDisplay;
+        public PlayerAction ToggleSettingsPanel;
 
         public KeyBinds()
         {
@@ -69,7 +70,9 @@ namespace CustomizableAbilities
             IncreaseNailDamage.AddDefaultBinding(Key.None);
             DecreaseNailDamage.AddDefaultBinding(Key.None);
             ToggleDisplay = CreatePlayerAction("Toggle Display");
-            ToggleDisplay.AddDefaultBinding(Key.None);
+            ToggleDisplay.AddDefaultBinding(Key.F5);
+            ToggleSettingsPanel = CreatePlayerAction("Toggle Settings Panel");
+            ToggleSettingsPanel.AddDefaultBinding(Key.F3);
         }
     }
     #endregion БИНДЫ
@@ -90,6 +93,8 @@ namespace CustomizableAbilities
         public bool DisplayFocusCost = false;
         public bool DisplayFocusTimeMultiplier = false;
         public bool HealEnemiesOverMaxHP = true;
+        public float DisplayAnchorX = 0.02f;
+        public float DisplayAnchorY = 0.23f;
 
         [JsonConverter(typeof(PlayerActionSetConverter))]
         public KeyBinds keybinds = new KeyBinds();
@@ -124,19 +129,14 @@ namespace CustomizableAbilities
     }
     #endregion ЛОКАЛЬНЫЕ НАСТРОЙКИ
 
-    public class CustomizableAbilities : Mod, ICustomMenuMod, IGlobalSettings<GlobalSettings>, ILocalSettings<LocalSettings>
+    public partial class CustomizableAbilities : Mod, ICustomMenuMod, IGlobalSettings<GlobalSettings>, ILocalSettings<LocalSettings>
     {
         #region SHIT HAPPENS
         public CustomizableAbilities() : base("CustomizableAbilities") { }
-        public override string GetVersion() => "1.4.0.0";
+        public override string GetVersion() => "1.5.0.0";
         public static LocalSettings LS = new LocalSettings();
         public static GlobalSettings GS = new GlobalSettings();
         private Menu menuRef;
-        private Menu nailMenu;
-        private Menu dreamNailMenu;
-        private Menu spellsMenu;
-        private Menu superDashMenu;
-        private Menu focusMenu;
         private float damageRemainder = 0f; // ОСТАТОК ДЛЯ ДРОБНОГО ГВОЗДЯ
         private Dictionary<GameObject, int> enemyMaxHealth = new(); // СЛОВАРЬ В КОТОРОМ ХРАНЯТСЯ МАКС. ЗДОРОВЬЕ КАЖДОГО ВРАГА
         private Dictionary<GameObject, float> fractionalPool = new(); // СЛОВАРЬ В КОТОРОМ ХРАНЯТСЯ ОСТАТКИ ДРОБНОГО УРОНА ДЛЯ КАЖДОГО ВРАГА
@@ -287,6 +287,62 @@ namespace CustomizableAbilities
             return GS;
         }
         #endregion СОХРАНЕНИЕ/ЗАГРУЗКА НАСТРОЕК
+
+        #region ВРЕМЯ ФОКУСА ДЛЯ ДИСПЛЕЯ
+        private const int Charm_QuickFocus = 7;
+        private const int Charm_DeepFocus = 34;
+        private const float Focus_Start_Time = 0.25f; // СТАРТОВАЯ АНИМАЦИЯ ФОКУСА, НЕ ЗАВИСИТ ОТ АМУЛЕТОВ И МНОЖИТЕЛЯ
+        private static float deepFocusScaling = -1f; 
+
+        // ВРЕМЯ ЛЕЧЕНИЯ (ОДИН ЦИКЛ ФОКУСА) В СЕКУНДАХ:
+        // СТАРТ + 33 × ВРЕМЯ_НА_1_ДУШУ × DEEP_FOCUS × МНОЖИТЕЛЬ. ЦЕНА ФОКУСА НА ВРЕМЯ НЕ ВЛИЯЕТ
+        private float GetFocusHealSeconds()
+        {
+            bool quickFocus = PlayerData.instance.equippedCharms.Contains(Charm_QuickFocus);
+            bool deepFocus = PlayerData.instance.equippedCharms.Contains(Charm_DeepFocus);
+
+            float timePerMP = quickFocus
+                ? GetSpellControlFloat("Time Per MP Drain CH", 0.018f)
+                : GetSpellControlFloat("Time Per MP Drain UnCH", 0.027f);
+
+            if (deepFocus)
+                timePerMP *= GetDeepFocusScaling();
+
+            float multiplier = Mathf.Max(LS.CustomFocusTimeMultiplier, 0.01f);
+            return Focus_Start_Time + Vanilla_Focus_Cost * timePerMP * multiplier;
+        }
+
+        private static float GetSpellControlFloat(string name, float fallback)
+        {
+            PlayMakerFSM fsm = HeroController.instance != null ? HeroController.instance.spellControl : null;
+            var variable = fsm != null ? fsm.FsmVariables.GetFsmFloat(name) : null;
+            return variable != null && variable.Value > 0f ? variable.Value : fallback;
+        }
+
+        private static float GetDeepFocusScaling()
+        {
+            if (deepFocusScaling > 0f)
+                return deepFocusScaling;
+
+            PlayMakerFSM fsm = HeroController.instance != null ? HeroController.instance.spellControl : null;
+            if (fsm != null)
+            {
+                foreach (var state in fsm.FsmStates)
+                {
+                    if (state.Name != "Deep Focus Speed")
+                        continue;
+
+                    foreach (var action in state.Actions)
+                    {
+                        if (action is HutongGames.PlayMaker.Actions.FloatMultiply multiply && multiply.multiplyBy.Value > 0f)
+                            return deepFocusScaling = multiply.multiplyBy.Value;
+                    }
+                }
+            }
+
+            return 1.65f;
+        }
+        #endregion ВРЕМЯ ФОКУСА ДЛЯ ДИСПЛЕЯ
 
         #region ИЗМЕНЕНИЯ ФОКУСА
         private const int Vanilla_Focus_Cost = 33;
@@ -451,205 +507,6 @@ namespace CustomizableAbilities
         }
         #endregion ИЗМЕНЕНИЯ УРОНА ГВОЗДЯ
 
-        #region ОТОБРАЖЕНИЕ ДИСПЛЕЯ
-        private int CalculateRoundedDamage(float baseDamage, params float[] multipliers)
-        {
-            float currentDamage = baseDamage;
-            foreach (float multiplier in multipliers)
-            {
-                currentDamage = Mathf.RoundToInt(currentDamage * multiplier);
-            }
-            return Mathf.RoundToInt(currentDamage);
-        }
-
-        private string BuildDisplayText()
-        {
-            string displayText = "CustomizableAbilities:\n[--------------------------]\n";
-
-            if (GS.DisplayFocusCost)
-            {
-                displayText += $"focus cost: {LS.CustomFocusCost}\n";
-            }
-            if (GS.DisplayFocusTimeMultiplier)
-            {
-                displayText += $"focus time: {LS.CustomFocusTimeMultiplier}\n";
-            }
-            if (GS.DisplayNailDamage)
-            {
-                if (!GS.EnableFloatNailDamage)
-                    displayText += $"nail damage: {LS.CustomIntNailDamage} ({LS.ModifiedNailDamage})\n";
-                else
-                    displayText += $"nail damage: {LS.CustomFloatNailDamage} ({LS.ModifiedNailDamage})\n";
-            }
-            if (GS.DisplayNailSoulGain)
-            {
-                displayText += $"nail soul gain: {LS.SoulGain}, {LS.ReserveSoulGain}\n";
-            }
-            if (GS.DisplayNailCooldown)
-            {
-                displayText += $"nail cooldown: {LS.CustomNailCooldown}\n";
-            }
-            if (GS.DisplayDreamNailSoulGain)
-            {
-                displayText += $"dream nail soul gain: {LS.CustomDreamNailSoulGain}\n";
-            }
-            if (GS.DisplayDreamNailDamage)
-            {
-                displayText += $"dream nail damage: {LS.CustomDreamNailDamage}\n";
-            }
-            if (GS.DisplaySpellsDamage)
-            {
-                if (PlayerData.instance.fireballLevel == 1)
-                {
-                    if (PlayerData.instance.equippedCharms.Contains(Charm_Flukenest))
-                    {
-                        if (PlayerData.instance.equippedCharms.Contains(Charm_DefendersCrest))
-                        {
-                            if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
-                            {
-                                displayText += $"vengeful spirit damage: {CalculateRoundedDamage(LS.CustomVengefulSpiritDamage * Percentage_Fireball_Flukenest_Scaling * Fireball_Flukes_Amount * Percentage_Fireball_Flukenest_Shaman_Stone_Scaling * Percentage_Fireball_Flukenest_Defenders_Crest_Scaling)}\n";
-                            }
-                            else
-                            {
-                                displayText += $"vengeful spirit damage: {CalculateRoundedDamage(LS.CustomVengefulSpiritDamage * Percentage_Fireball_Flukenest_Scaling * Fireball_Flukes_Amount * Percentage_Fireball_Flukenest_Defenders_Crest_Scaling)}\n";
-                            }
-                        }
-
-                        else
-                        {
-                            if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
-                            {
-                                displayText += $"vengeful spirit damage: {CalculateRoundedDamage(LS.CustomVengefulSpiritDamage * Percentage_Fireball_Flukenest_Scaling * Percentage_Fireball_Flukenest_Shaman_Stone_Scaling * Fireball_Flukes_Amount)}\n";
-                            }
-                            else
-                            {
-                                displayText += $"vengeful spirit damage: {CalculateRoundedDamage(LS.CustomVengefulSpiritDamage * Percentage_Fireball_Flukenest_Scaling * Fireball_Flukes_Amount)}\n";
-                            }
-                        }
-                    }
-
-                    else
-                    {
-                        if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
-                        {
-                            displayText += $"vengeful spirit damage: {CalculateRoundedDamage(LS.CustomVengefulSpiritDamage * Percentage_Fireball_Shaman_Stone_Scaling)}\n";
-                        }
-                        else
-                        {
-                            displayText += $"vengeful spirit damage: {LS.CustomVengefulSpiritDamage}\n";
-                        }
-                    }
-                }
-                else if (PlayerData.instance.fireballLevel == 2)
-                {
-                    if (PlayerData.instance.equippedCharms.Contains(Charm_Flukenest))
-                    {
-                        if (PlayerData.instance.equippedCharms.Contains(Charm_DefendersCrest))
-                        {
-                            if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
-                            {
-                                displayText += $"shade soul damage: {CalculateRoundedDamage(LS.CustomShadeSoulDamage * Percentage_Fireball2_Flukenest_Scaling * Fireball2_Flukes_Amount * Percentage_Fireball_Flukenest_Shaman_Stone_Scaling * Percentage_Fireball2_Flukenest_Defenders_Crest_Scaling)}\n";
-                            }
-                            else
-                            {
-                                displayText += $"shade soul damage: {CalculateRoundedDamage(LS.CustomShadeSoulDamage * Percentage_Fireball2_Flukenest_Scaling * Fireball2_Flukes_Amount * Percentage_Fireball2_Flukenest_Defenders_Crest_Scaling)}\n";
-                            }
-                        }
-
-                        else
-                        {
-                            if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
-                            {
-                                displayText += $"shade soul damage: {CalculateRoundedDamage(LS.CustomShadeSoulDamage * Percentage_Fireball2_Flukenest_Scaling * Percentage_Fireball_Flukenest_Shaman_Stone_Scaling * Fireball2_Flukes_Amount)}\n";
-                            }
-                            else
-                            {
-                                displayText += $"shade soul damage: {CalculateRoundedDamage(LS.CustomShadeSoulDamage * Percentage_Fireball2_Flukenest_Scaling * Fireball2_Flukes_Amount)}\n";
-                            }
-                        }
-                    }
-
-                    else
-                    {
-                        if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
-                        {
-                            displayText += $"shade soul damage: {CalculateRoundedDamage(LS.CustomShadeSoulDamage * Percentage_Fireball_Shaman_Stone_Scaling)}\n";
-                        }
-                        else
-                        {
-                            displayText += $"shade soul damage: {LS.CustomShadeSoulDamage}\n";
-                        }
-                    }
-                }
-                else
-                {
-                    displayText += "not enable fireball\n";
-                }
-
-                if (PlayerData.instance.quakeLevel == 1)
-                {
-                    if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
-                    {
-                        displayText += $"desolate dive damage: {CalculateRoundedDamage(LS.CustomDesolateDiveDamage * Percentage_DDive_Shaman_Stone_Scaling)}\n";
-                    }
-                    else
-                    {
-                        displayText += $"desolate dive damage: {LS.CustomDesolateDiveDamage}\n";
-                    }
-                }
-                else if (PlayerData.instance.quakeLevel == 2)
-                {
-                    if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
-                    {
-                        displayText += $"descending dark damage: {CalculateRoundedDamage(LS.CustomDescendingDarkDamage * Percentage_DDark_Shaman_Stone_Scaling)}\n";
-                    }
-                    else
-                    {
-                        displayText += $"descending dark damage: {LS.CustomDescendingDarkDamage}\n";
-                    }
-                }
-                else
-                {
-                    displayText += "not enable quake\n";
-                }
-
-                if (PlayerData.instance.screamLevel == 1)
-                {
-                    if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
-                    {
-                        displayText += $"howling wraiths damage: {CalculateRoundedDamage(LS.CustomHowlingWraithsDamage * Percentage_SHeads_Shaman_Stone_Scaling)}\n";
-                    }
-                    else
-                    {
-                        displayText += $"howling wraiths damage: {LS.CustomHowlingWraithsDamage}\n";
-                    }
-                }
-                else if (PlayerData.instance.screamLevel == 2)
-                {
-                    if (PlayerData.instance.equippedCharms.Contains(Charm_ShamanStone))
-                    {
-                        displayText += $"abyss shriek damage: {CalculateRoundedDamage(LS.CustomAbyssShriekDamage * Percentage_SHeads_Shaman_Stone_Scaling)}\n";
-                    }
-                    else
-                    {
-                        displayText += $"abyss shriek damage: {LS.CustomAbyssShriekDamage}\n";
-                    }
-                }
-                else
-                {
-                    displayText += "not enable scream\n";
-                }
-            }
-            if (GS.DisplaySuperDashDamage)
-            {
-                displayText += $"crystal dash damage: {LS.CustomSuperDashDamage}\n";
-            }
-
-            displayText += "[--------------------------]";
-            return displayText;
-        }
-        #endregion ОТОБРАЖЕНИЕ ДИСПЛЕЯ
-
         #region РАССЧЁТ УРОНА
         private float GetModifiedDamage(float baseDamage, string typeOfDamage)
         {
@@ -741,581 +598,13 @@ namespace CustomizableAbilities
         #endregion АКТИВНА ЛИ ВЕРИГА ГВОЗДЯ
 
         #region МЕНЮ
-        private Menu CreateFocusMenu(MenuScreen parentMenu)
-        {
-            return focusMenu = new Menu("Focus Settings", new Element[]
-            {
-                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ СТОИМОСТИ ФОКУСА
-                    (
-                        name: "Show Focus Cost",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.DisplayFocusCost = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.DisplayFocusCost ? 1 : 0
-                    ),
-
-                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ ВРЕМЕНИ ФОКУСА
-                    (
-                        name: "Show Focus Time",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.DisplayFocusTimeMultiplier = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.DisplayFocusTimeMultiplier ? 1 : 0
-                    ),
-
-                Blueprints.IntInputField
-                (
-                    "Focus Cost",
-                    cost =>
-                    {
-                        LS.CustomFocusCost = Mathf.Clamp(cost, 0, 999);
-                        OnSaveLocal();
-                    },
-                    () => LS.CustomFocusCost,
-                    33,
-                    "SOUL",
-                    3
-                ),
-
-                Blueprints.FloatInputField
-                (
-                    "Focus Time Multiplier",
-                    mult =>
-                    {
-                        LS.CustomFocusTimeMultiplier = Mathf.Clamp(mult, 0.01f, 99f);
-                        OnSaveLocal();
-                    },
-                    () => LS.CustomFocusTimeMultiplier,
-                    1f,
-                    "TIME",
-                    4
-                ),
-
-                    new MenuButton
-                    (
-                        name: "Reset Focus Settings To Defaults",
-                        description: "",
-                        submitAction: (_) =>
-                        {
-                            if (GS.EnableMod)
-                            {
-                                GS.DisplayFocusCost = true;
-                                GS.DisplayFocusTimeMultiplier = true;
-
-                                LS.CustomFocusCost = 33;
-                                LS.CustomFocusTimeMultiplier = 1f;
-
-                                OnSaveGlobal();
-                                OnSaveLocal();
-                                focusMenu?.Update();
-                            }
-                        }
-                    )
-            });
-        }
-        private Menu CreateNailMenu(MenuScreen parentMenu)
-        {
-            return nailMenu = new Menu("Nail Settings", new Element[]
-            {
-                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ УРОНА ГВОЗДЯ
-                    (
-                        name: "Show Nail Damage",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.DisplayNailDamage = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.DisplayNailDamage ? 1 : 0
-                    ),
-
-                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ ПОЛУЧАЕМОЙ МАНЫ
-                    (
-                        name: "Show Nail Soul Gain",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.DisplayNailSoulGain = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.DisplayNailSoulGain ? 1 : 0
-                    ),
-
-                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ ПЕРЕЗАРЯДКИ ГВОЗДЯ
-                    (
-                        name: "Show Nail Cooldown",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.DisplayNailCooldown = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.DisplayNailCooldown ? 1 : 0
-                    ),
-
-                new HorizontalOption // ВКЛ/ВЫКЛ ИГНОРИРОВАНИЕ ВЕРИГИ НА ГВОЗДЬ
-                    (
-                        name: "Ignore Nail Binding",
-                        description: "Nail damage won't be set to 13 if it's active",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            LS.IgnoreNailBinding = index == 1;
-                            OnSaveLocal();
-                        },
-
-                        loadSetting: () => LS.IgnoreNailBinding ? 1 : 0
-                    ),
-
-                    new HorizontalOption // ВКЛ/ВЫКЛ ДРОБНЫЙ УРОН ГВОЗДЯ
-                    (
-                        name: "Enable Float Damage",
-                        description: "Toggle fractional nail damage logic",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.EnableFloatNailDamage = index == 1;
-                            OnSaveGlobal();
-                            if (GS.EnableFloatNailDamage)
-                                LS.ModifiedNailDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "nail");
-                            else
-                                LS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "nail"));
-                        },
-
-                        loadSetting: () => GS.EnableFloatNailDamage ? 1 : 0
-                    ),
-
-                    new HorizontalOption // ПРЕСЕТ ВАНИЛЬНЫХ ГВОЗДЕЙ
-                    (
-                        name: "Set Vanilla Nail Damage",
-                        description: "Vanilla positive and negative nail damage set",
-                        values: new[] { "Old", "Sharpened", "Channelled", "Coiled", "Pure", "-Old", "-Sharpened", "-Channelled", "-Coiled", "-Pure" },
-                        applySetting: index =>
-                        {
-                            if (!GS.EnableFloatNailDamage)
-                            {
-                                // OLD = +-5, SHARPENED = +-9, CHANNELLED = +-13, COILED = +-17, PURE = +-21
-                                int vanillaDmg = 5 * (index+1) - (index+1) + 1;
-                                if (index > 4 && index <= 9)
-                                    vanillaDmg = -1 * (5 * (index-4) - (index-4) + 1);
-                                UpdateNailDamage(vanillaDmg);
-                                LS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedDamage(vanillaDmg, "nail"));
-                                LS.NailUpgrade = index;
-                                OnSaveLocal();
-                                nailMenu?.Update();
-                            }
-                        },
-
-                        loadSetting: () => LS.NailUpgrade
-                    ),
-
-                    Blueprints.IntInputField // УРОН ЦЕЛОГО ГВОЗДЯ
-                    (
-                        "Custom Nail Damage",
-                        naildmg =>
-                        {
-                            naildmg = Mathf.Clamp(naildmg, -9999, 9999);
-                            UpdateNailDamage(naildmg);
-                            OnSaveLocal();
-
-                            if (!GS.EnableFloatNailDamage)
-                            {
-                                LS.ModifiedNailDamage = Mathf.RoundToInt(GetModifiedDamage(LS.CustomIntNailDamage, "nail"));
-                            }
-                        },
-                        () => LS.CustomIntNailDamage,
-                        21,
-                        "DMG",
-                        5
-                    ),
-
-                    new HundredthSlider // УРОН ДРОБНОГО ГВОЗДЯ
-                    (
-                        name: "Custom Float Nail Damage",
-                        storeValue: val =>
-                        {
-                            float rounded = Mathf.Round(val * 100f) / 100f;
-                            LS.CustomFloatNailDamage = rounded;
-                            if (GS.EnableFloatNailDamage)
-                                LS.ModifiedNailDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "nail");
-                        },
-
-                        loadValue: () => LS.CustomFloatNailDamage,
-                        minValue: 0.01f,
-                        maxValue: 0.99f,
-                        wholeNumbers: false
-                    ),
-
-                    Blueprints.IntInputField // КОЛИЧЕСТВО ДУШИ ПОЛУЧАЕМОЙ С УДАРА
-                    (
-                        "Main Vessel Soul Gain",
-                        soulgain =>
-                        {
-                            soulgain = Mathf.Max(0, Mathf.Clamp(soulgain, 0, 198));
-
-                            LS.SoulGain = soulgain;
-                            OnSaveLocal();
-                        },
-                        () => LS.SoulGain,
-                        11,
-                        "VAL",
-                        4
-                    ),
-
-                    Blueprints.IntInputField // КОЛИЧЕСТВО РЕЗЕРВНОЙ ДУШИ ПОЛУЧАЕМОЙ С УДАРА
-                    (
-                        "Reserve Vessel Soul Gain",
-                        ressoulgain =>
-                        {
-                            ressoulgain = Mathf.Max(0, Mathf.Clamp(ressoulgain, 0, 198));
-
-                            LS.ReserveSoulGain = ressoulgain;
-                            OnSaveLocal();
-                        },
-                        () => LS.ReserveSoulGain,
-                        6,
-                        "VAL",
-                        4
-                    ),
-
-                    Blueprints.FloatInputField // ВРЕМЯ ПЕРЕЗАРЯДКИ ГВОЗДЯ
-                    (
-                        "Nail Cooldown (SEC)",
-                        nailcd =>
-                        {
-                            nailcd = Mathf.Clamp(nailcd, -198f, 198f);
-
-                            LS.CustomNailCooldown = nailcd;
-                            OnSaveLocal();
-                        },
-                        () => LS.CustomNailCooldown,
-                        0.41f,
-                        "VAL",
-                        4
-                    ),
-
-                    new MenuButton
-                    (
-                        name: "Reset Nail Settings To Defaults",
-                        description: "Nail damage will be set to Pure (21)",
-                        submitAction: (_) =>
-                        {
-                            if (GS.EnableMod)
-                            {
-                                GS.EnableFloatNailDamage = false;
-                                GS.DisplayNailDamage = true;
-                                GS.DisplayNailSoulGain = true;
-                                GS.DisplayNailCooldown = true;
-
-                                LS.IgnoreNailBinding = false;
-                                LS.CustomFloatNailDamage = 0.1f;
-                                LS.CustomNailCooldown = 0.41f;
-                                LS.NailUpgrade = 0;
-                                UpdateNailDamage(21);
-                                LS.ModifiedNailDamage = GetModifiedDamage(LS.CustomIntNailDamage, "nail");
-                                LS.SoulGain = 11;
-                                LS.ReserveSoulGain = 6;
-
-                                OnSaveGlobal();
-                                OnSaveLocal();
-                                nailMenu?.Update();
-                            }
-                        }
-                    )
-            });
-        }
-        private Menu CreateDreamNailMenu(MenuScreen parentMenu)
-        {
-            return dreamNailMenu = new Menu("Dream Nail Settings", new Element[]
-            {
-                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ КОЛИЧЕСТВА ДУШИ ПОЛУЧАЕМОЙ С УДАРА ГВОЗДЯ ГРЁЗ
-                    (
-                        name: "Show Dream Nail Soul Gain",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.DisplayDreamNailSoulGain = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.DisplayDreamNailSoulGain ? 1 : 0
-                    ),
-
-                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ УРОНА ГВОЗДЯ ГРЁЗ
-                    (
-                        name: "Show Dream Nail Damage",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.DisplayDreamNailDamage = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.DisplayDreamNailDamage ? 1 : 0
-                    ),
-
-                Blueprints.IntInputField // КОЛИЧЕСТВО ДУШИ ПОЛУЧАЕМОЙ С УДАРА ГВОЗДЯ ГРЁЗ
-                    (
-                        "Dream Nail Soul Gain",
-                        dnsoulgain =>
-                        {
-                            dnsoulgain = Mathf.Max(0, Mathf.Clamp(dnsoulgain, 0, 198));
-
-                            LS.CustomDreamNailSoulGain = dnsoulgain;
-                            OnSaveLocal();
-                        },
-                        () => LS.CustomDreamNailSoulGain,
-                        33,
-                        "VAL",
-                        4
-                    ),
-
-                    Blueprints.FloatInputField // УРОН ГВОЗДЯ ГРЁЗ
-                    (
-                        "Dream Nail Damage",
-                        dndamage =>
-                        {
-                            dndamage = Mathf.Clamp(dndamage, -9999f, 9999f);
-
-                            LS.CustomDreamNailDamage = dndamage;
-                            OnSaveLocal();
-                        },
-                        () => LS.CustomDreamNailDamage,
-                        0f,
-                        "DMG",
-                        5
-                    ),
-
-                    new MenuButton
-                    (
-                        name: "Reset Dream Nail Settings To Defaults",
-                        description: "",
-                        submitAction: (_) =>
-                        {
-                            if (GS.EnableMod)
-                            {
-                                GS.DisplayDreamNailSoulGain = true;
-                                GS.DisplayDreamNailDamage = true;
-
-                                LS.CustomDreamNailSoulGain = 33;
-                                LS.CustomDreamNailDamage = 0f;
-
-                                OnSaveGlobal();
-                                OnSaveLocal();
-                                dreamNailMenu?.Update();
-                            }
-                        }
-                    )
-            });
-        }
-        private Menu CreateSpellsMenu(MenuScreen parentMenu)
-        {
-            return spellsMenu = new Menu("Spells Settings", new Element[]
-            {
-                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ УРОНА ЗАКЛИНАНИЙ
-                    (
-                        name: "Show Spells Damage",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.DisplaySpellsDamage = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.DisplaySpellsDamage ? 1 : 0
-                    ),
-
-                Blueprints.IntInputField // УРОН МСТИТЕЛЬНОГО ДУХА
-                    (
-                        "Vengeful Spirit Damage",
-                        vspiritdmg =>
-                        {
-                            vspiritdmg = Mathf.Clamp(vspiritdmg, 1, 9999);
-                            LS.CustomVengefulSpiritDamage = vspiritdmg;
-                            OnSaveLocal();
-                        },
-                        () => LS.CustomVengefulSpiritDamage,
-                        15,
-                        "DMG",
-                        5
-                    ),
-                Blueprints.IntInputField // УРОН ОПУСТОШАЮЩЕГО ПИКЕ
-                    (
-                        "Desolate Dive Damage",
-                        ddivedmg =>
-                        {
-                            ddivedmg = Mathf.Clamp(ddivedmg, 1, 9999);
-                            LS.CustomDesolateDiveDamage = ddivedmg;
-                            OnSaveLocal();
-                        },
-                        () => LS.CustomDesolateDiveDamage,
-                        35,
-                        "DMG",
-                        5
-                    ),
-                Blueprints.IntInputField // УРОН ВОЮЩИХ ДУХОВ
-                    (
-                        "Howling Wraiths Damage",
-                        hwraithsdmg =>
-                        {
-                            hwraithsdmg = Mathf.Clamp(hwraithsdmg, 1, 9999);
-                            LS.CustomHowlingWraithsDamage = hwraithsdmg;
-                            OnSaveLocal();
-                        },
-                        () => LS.CustomHowlingWraithsDamage,
-                        39,
-                        "DMG",
-                        5
-                    ),
-
-                Blueprints.IntInputField // УРОН ТЕНЕВОЙ ДУШИ
-                    (
-                        "Shade Soul Damage",
-                        ssouldmg =>
-                        {
-                            ssouldmg = Mathf.Clamp(ssouldmg, 1, 9999);
-                            LS.CustomShadeSoulDamage = ssouldmg;
-                            OnSaveLocal();
-                        },
-                        () => LS.CustomShadeSoulDamage,
-                        30,
-                        "DMG",
-                        5
-                    ),
-                Blueprints.IntInputField // УРОН НИСХОДЯЩЕЙ ТЬМЫ
-                    (
-                        "Descending Dark Damage",
-                        ddarkdmg =>
-                        {
-                            ddarkdmg = Mathf.Clamp(ddarkdmg, 1, 9999);
-                            LS.CustomDescendingDarkDamage = ddarkdmg;
-                            OnSaveLocal();
-                        },
-                        () => LS.CustomDescendingDarkDamage,
-                        60,
-                        "DMG",
-                        5
-                    ),
-                Blueprints.IntInputField // УРОН ВОПЛЯ БЕЗДНЫ
-                    (
-                        "Abyss Shriek Damage",
-                        ashriekdmg =>
-                        {
-                            ashriekdmg = Mathf.Clamp(ashriekdmg, 1, 9999);
-                            LS.CustomAbyssShriekDamage = ashriekdmg;
-                            OnSaveLocal();
-                        },
-                        () => LS.CustomAbyssShriekDamage,
-                        80,
-                        "DMG",
-                        5
-                    ),
-
-                new MenuButton
-                    (
-                        name: "Reset Spells Settings To Defaults",
-                        description: "",
-                        submitAction: (_) =>
-                        {
-                            if (GS.EnableMod)
-                            {
-                                GS.DisplaySpellsDamage = true;
-
-                                LS.CustomVengefulSpiritDamage = 15;
-                                LS.CustomDesolateDiveDamage = 30;
-                                LS.CustomHowlingWraithsDamage = 39;
-                                LS.CustomShadeSoulDamage = 30;
-                                LS.CustomDescendingDarkDamage = 60;
-                                LS.CustomAbyssShriekDamage = 80;
-
-                                OnSaveGlobal();
-                                OnSaveLocal();
-                                spellsMenu?.Update();
-                            }
-                        }
-                    )
-            });
-        }
-        private Menu CreateSuperDashMenu(MenuScreen parentMenu)
-        {
-            return superDashMenu = new Menu("Crystal Dash Settings", new Element[]
-            {
-                new HorizontalOption // ВКЛ/ВЫКЛ ОТОБРАЖЕНИЕ УРОНА КРИСТАЛЬНОГО РЫВКА
-                    (
-                        name: "Show Crystal Dash Damage",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.DisplaySuperDashDamage = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.DisplaySuperDashDamage ? 1 : 0
-                    ),
-
-                    Blueprints.FloatInputField // УРОН КРИСТАЛЬНОГО РЫВКА
-                    (
-                        "Crystal Dash Damage",
-                        sddamage =>
-                        {
-                            sddamage = Mathf.Clamp(sddamage, -9999f, 9999f);
-
-                            LS.CustomSuperDashDamage = sddamage;
-                            OnSaveLocal();
-                        },
-                        () => LS.CustomSuperDashDamage,
-                        10f,
-                        "DMG",
-                        5
-                    ),
-
-                    new MenuButton
-                    (
-                        name: "Reset Crystal Dash Settings To Defaults",
-                        description: "",
-                        submitAction: (_) =>
-                        {
-                            if (GS.EnableMod)
-                            {
-                                GS.DisplaySuperDashDamage = true;
-
-                                LS.CustomSuperDashDamage = 10f;
-
-                                OnSaveGlobal();
-                                OnSaveLocal();
-                                superDashMenu?.Update();
-                            }
-                        }
-                    )
-            });
-        }
-
         public MenuScreen GetMenuScreen(MenuScreen modListMenu, ModToggleDelegates? toggleDelegates)
         {
             if (menuRef == null)
             {
                 menuRef = new Menu("CustomizableAbilities", new Element[]
                 {
+                    new TextPanel("All settings are in the settings panel:\npause the game and press the Settings Panel key (F3 by default)", 1200f, 26),
 
                     new HorizontalOption // ВКЛ/ВЫКЛ МОД
                     (
@@ -1335,25 +624,11 @@ namespace CustomizableAbilities
                         loadSetting: () => GS.EnableMod ? 1 : 0
                     ),
 
-                    new HorizontalOption // ХИЛИТЬ ВРАГОВ ПОВЕРХ ИХ МАКСИМАЛЬНОГО ХП
+                    new KeyBind
                     (
-                        name: "Heal Enemies Over Their Max HP",
-                        description: "Toggle healing (negative) damage logic",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.HealEnemiesOverMaxHP = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.HealEnemiesOverMaxHP ? 1 : 0
+                        name: "Settings Panel Key",
+                        playerAction: GS.keybinds.ToggleSettingsPanel
                     ),
-
-                    Blueprints.NavigateToMenu("Focus Settings", "", () => CreateFocusMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
-                    Blueprints.NavigateToMenu("Nail Settings", "", () => CreateNailMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
-                    Blueprints.NavigateToMenu("Dream Nail Settings", "", () => CreateDreamNailMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
-                    Blueprints.NavigateToMenu("Spells Settings", "", () => CreateSpellsMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
-                    Blueprints.NavigateToMenu("Crystal Dash Settings", "", () => CreateSuperDashMenu(modListMenu).GetMenuScreen(menuRef.GetMenuScreen(modListMenu))),
 
                     new KeyBind
                     (
@@ -1373,45 +648,12 @@ namespace CustomizableAbilities
                         playerAction: GS.keybinds.ToggleDisplay
                     ),
 
-                    new HorizontalOption // ВКЛ/ВЫКЛ ДИСПЛЕЙ
-                    (
-                        name: "Show Display",
-                        description: "Toggle display On/Off",
-                        values: new[] { "Off", "On" },
-                        applySetting: index =>
-                        {
-                            GS.EnableDisplay = index == 1;
-                            OnSaveGlobal();
-                        },
-
-                        loadSetting: () => GS.EnableDisplay ? 1 : 0
-                    ),
-
                     new MenuButton
                     (
                         name: "Reset Defaults",
-                        description: "",
-                        submitAction: (_) =>
-                        {
-                            if (GS.EnableMod)
-                            {
-                                GS.HealEnemiesOverMaxHP = true;
-
-                                GS.keybinds.IncreaseNailDamage.ClearBindings();
-                                GS.keybinds.DecreaseNailDamage.ClearBindings();
-                                GS.keybinds.ToggleDisplay.ClearBindings();
-
-                                //GS.keybinds.IncreaseNailDamage.AddDefaultBinding(Key.U);
-                                //GS.keybinds.DecreaseNailDamage.AddDefaultBinding(Key.I);
-                                //GS.keybinds.ToggleDisplay.AddDefaultBinding(Key.O);
-
-                                OnSaveGlobal();
-                                OnSaveLocal();
-                                menuRef?.Update();
-                            }
-                        }
+                        description: "Reset global settings and key binds (Settings Panel = F3, Display = F5)",
+                        submitAction: (_) => ResetGlobalSettings()
                     )
-
                 });
             }
 
@@ -1426,6 +668,7 @@ namespace CustomizableAbilities
 
             base.Initialize(preloadedObjects);
             SubscribeHooks();
+            ModSettingsPanel.Create(BuildSettingsTabs);
             UnityEngine.SceneManagement.SceneManager.activeSceneChanged += OnSceneChanged;
 
             Log("Initialized.");
@@ -2014,7 +1257,7 @@ namespace CustomizableAbilities
                     ApplyThornsOfAgonyDamage(enemy, ref hitInstance);
                 }
 
-                else if (attackerName == "SuperDash Damage") 
+                else if (attackerName == "SuperDash Damage")
                 {
                     int damageToDeal = TakeSignedWholeDamage(enemy, LS.CustomSuperDashDamage);
                     enemy.hp -= damageToDeal - 1;
@@ -2207,38 +1450,7 @@ namespace CustomizableAbilities
                 }
             }
 
-            // УБОГАЯ ЛОГИКА ОТОБРАЖЕНИЯ ДИСПЛЕЯ -----
-            if (GS.keybinds.ToggleDisplay.WasPressed)
-            {
-                GS.EnableDisplay = !GS.EnableDisplay;
-                OnSaveGlobal();
-
-                if (!GS.EnableDisplay)
-                    ModDisplay.Instance?.Destroy();
-                else
-                {
-                    if (ModDisplay.Instance == null)
-                        ModDisplay.Instance = new ModDisplay();
-                    ModDisplay.Instance.Display(BuildDisplayText());
-                }
-            }
-
-            if (GS.EnableDisplay)
-            {
-                if (ModDisplay.Instance == null)
-                    ModDisplay.Instance = new ModDisplay();
-                if (!GS.EnableFloatNailDamage)
-                {
-                    float modified = GetModifiedDamage(LS.CustomIntNailDamage, "nail");
-                    LS.ModifiedNailDamage = Mathf.RoundToInt(modified);
-                }
-                else
-                    LS.ModifiedNailDamage = GetModifiedDamage(LS.CustomFloatNailDamage, "nail");
-                ModDisplay.Instance.Display(BuildDisplayText());
-            }
-            else
-                ModDisplay.Instance?.Destroy();
-            // УБОГАЯ ЛОГИКА ОТОБРАЖЕНИЯ ДИСПЛЕЯ -----
+            UpdateDisplayBeforeInput(); // ДИСПЛЕЙ: СМ. Display.cs
 
             if (GS.keybinds.IncreaseNailDamage.WasPressed)
             {
@@ -2254,19 +1466,7 @@ namespace CustomizableAbilities
                 LS.ModifiedNailDamage = Mathf.RoundToInt(modified);
             }
 
-            // УБОГАЯ ЛОГИКА ОТОБРАЖЕНИЯ ДИСПЛЕЯ -----
-            if (GS.EnableDisplay)
-            {
-                if (ModDisplay.Instance == null)
-                    ModDisplay.Instance = new ModDisplay();
-
-                ModDisplay.Instance.Display(BuildDisplayText());
-            }
-            else
-            {
-                ModDisplay.Instance?.Destroy();
-            }
-            // УБОГАЯ ЛОГИКА ОТОБРАЖЕНИЯ ДИСПЛЕЯ -----
+            RefreshDisplay(); // ДИСПЛЕЙ: СМ. Display.cs
         }
         #endregion ПРИ ИЗМЕНЕНИИ ГЕРОЯ
     }
